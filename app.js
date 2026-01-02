@@ -28,19 +28,19 @@ const corsOptions = {
       callback(null, true); // Temporairement autoriser tous pendant le debug
     }
   },
-  credentials: true, // Important pour les cookies/JWT
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
-  maxAge: 86400 // Cache preflight pendant 24h
+  maxAge: 86400
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+// ⚠️ CORRECTION ICI : remplacer '*' par '(.*)'
+app.options('(.*)', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ... reste du code
 // Logger simple pour le développement
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
@@ -93,16 +93,11 @@ app.listen(PORT, '0.0.0.0', () => {
 ║   🌍 Environnement: ${process.env.NODE_ENV || 'development'}  ║
 ╚════════════════════════════════════════╝
   `);
-  // ... reste du code
-
 
   // === DÉMARRAGE DU NETTOYAGE AUTOMATIQUE DES SESSIONS ===
   try {
     const { startAutomaticCleanup } = require('./src/utils/sessionCleanup');
-    
-    // Nettoyer les sessions expirées toutes les 60 minutes
     startAutomaticCleanup(60);
-    
     console.log('✅ Nettoyage automatique des sessions activé (toutes les 60 minutes)');
   } catch (error) {
     console.warn('⚠️  Impossible de démarrer le nettoyage automatique:', error.message);
