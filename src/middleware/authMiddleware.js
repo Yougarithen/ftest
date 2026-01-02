@@ -45,7 +45,7 @@ const authenticate = async (req, res, next) => {
       FROM SessionToken s
       JOIN Utilisateur u ON s.id_utilisateur = u.id_utilisateur
       WHERE s.token_hash = $1
-      AND s.actif = 1
+      AND s.actif = true
     `, [token]);
 
     const session = result.rows[0];
@@ -74,7 +74,7 @@ const authenticate = async (req, res, next) => {
       // Désactiver la session expirée
       await pool.query(`
         UPDATE SessionToken
-        SET actif = 0
+        SET actif = false
         WHERE id_session = $1
       `, [session.id_session]);
 
@@ -178,7 +178,7 @@ const optionalAuth = async (req, res, next) => {
       const result = await pool.query(`
         SELECT * FROM SessionToken 
         WHERE token_hash = $1
-        AND actif = 1
+        AND actif = true
         AND date_expiration > NOW()
       `, [token]);
 
