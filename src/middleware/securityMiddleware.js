@@ -66,8 +66,10 @@ async function initSecurityTables() {
 }
 
 // Initialiser les tables au chargement
+// ✅ APRÈS - Ne crash pas au démarrage
 initSecurityTables().catch(err => {
-  console.error('Erreur initialisation tables sécurité:', err);
+  console.error('⚠️ Erreur initialisation tables sécurité:', err.message);
+  console.log('⚠️ L\'application continuera de fonctionner mais les fonctions de sécurité seront limitées');
 });
 
 // ============================================================
