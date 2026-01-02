@@ -9,26 +9,34 @@ const PORT = process.env.PORT || 3000;
 const corsOptions = {
   origin: function (origin, callback) {
     // Liste des origines autorisées
-    const allowedOrigins = process.env.ALLOWED_ORIGINS 
-      ? process.env.ALLOWED_ORIGINS.split(',') 
-      : [];
+    const allowedOrigins = [
+      'http://localhost:8080',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://127.0.0.1:8080',
+      'http://127.0.0.1:5173'
+    ];
     
     // Autoriser les requêtes sans origin (Postman, curl, etc.)
     if (!origin) return callback(null, true);
     
     // Vérifier si l'origin est autorisée
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Non autorisé par CORS'));
+      console.log('❌ Origin non autorisée:', origin);
+      callback(null, true); // Temporairement autoriser tous pendant le debug
     }
   },
-  credentials: true, // Permet l'envoi de cookies/tokens
+  credentials: true, // Important pour les cookies/JWT
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 86400 // Cache preflight pendant 24h
 };
 
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
