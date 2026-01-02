@@ -113,8 +113,8 @@ class AuthController {
       // Désactiver toutes les sessions actives de cet utilisateur
       await pool.query(`
         UPDATE SessionToken
-        SET actif = 0
-        WHERE id_utilisateur = $1 AND actif = 1
+    SET actif = false  // ❌ était: actif = 0
+WHERE id_utilisateur = $1 AND actif = true  // ❌ était: actif = 1
       `, [user.id_utilisateur]);
 
       // Mettre à jour la dernière connexion
@@ -281,9 +281,9 @@ class AuthController {
 
       // Déconnecter toutes les autres sessions
       await pool.query(`
-        UPDATE SessionToken
-        SET actif = 0
-        WHERE id_utilisateur = $1 AND token_hash != $2
+  UPDATE SessionToken
+SET actif = false  // ❌ était: actif = 0
+WHERE id_utilisateur = $1 AND token_hash != $2
       `, [req.user.id, req.token]);
 
       res.json({
@@ -320,9 +320,9 @@ class AuthController {
       // Désactiver la session actuelle
       if (req.session && req.session.id_session) {
         await pool.query(`
-          UPDATE SessionToken
-          SET actif = 0
-          WHERE id_session = $1
+   UPDATE SessionToken
+SET actif = false  // ❌ était: actif = 0
+WHERE id_session = $1
         `, [req.session.id_session]);
       }
 
@@ -382,7 +382,7 @@ class AuthController {
           date_derniere_activite
         FROM SessionToken
         WHERE id_utilisateur = $1
-        AND actif = 1 
+        AND AND actif = true
         AND date_expiration > NOW()
         ORDER BY date_creation DESC
       `, [req.user.id]);
@@ -420,9 +420,9 @@ class AuthController {
       }
 
       await pool.query(`
-        UPDATE SessionToken
-        SET actif = 0
-        WHERE id_session = $1
+ UPDATE SessionToken
+SET actif = false  // ❌ était: actif = 0
+WHERE id_session = $1
       `, [id_session]);
 
       res.json({

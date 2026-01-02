@@ -125,8 +125,8 @@ class userModel {
       values.push(id_role);
     }
     if (actif !== undefined) {
-      updates.push(`actif = $${paramIndex++}`);
-      values.push(actif ? 1 : 0);
+   updates.push(`actif = $${paramIndex++}`);
+  values.push(actif);  // ✅ Passe directement le boolean, pas 1 ou 0
     }
 
     updates.push(`date_modification = CURRENT_TIMESTAMP`);
