@@ -7,11 +7,12 @@ const PORT = process.env.PORT || 3000;
 
 // ✅ CONFIGURATION CORS POUR AUTORISER LOCALHOST
 // ✅ CONFIGURATION CORS AMÉLIORÉE
+// ✅ CONFIGURATION CORS - Utilise la variable d'environnement
 const corsOptions = {
   origin: function (origin, callback) {
-    // Récupérer les origines depuis .env
+    // Récupérer les origines depuis la variable d'environnement
     const allowedOrigins = process.env.ALLOWED_ORIGINS 
-      ? process.env.ALLOWED_ORIGINS.split(',')
+      ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
       : [
           'http://localhost:8080',
           'http://localhost:5173',
@@ -20,16 +21,22 @@ const corsOptions = {
           'http://127.0.0.1:5173'
         ];
     
+    console.log('🔍 CORS - Origin reçue:', origin);
+    console.log('🔍 CORS - Origins autorisées:', allowedOrigins);
+    
     // Autoriser les requêtes sans origin (Postman, curl, etc.)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('✅ CORS - Pas d\'origin (Postman/curl) → Autorisé');
+      return callback(null, true);
+    }
     
     // Vérifier si l'origin est autorisée
     if (allowedOrigins.includes(origin)) {
-      console.log('✅ Origin autorisée:', origin);
+      console.log('✅ CORS - Origin autorisée:', origin);
       callback(null, true);
     } else {
-      console.log('❌ Origin non autorisée:', origin);
-      // En développement, autoriser quand même
+      console.log('❌ CORS - Origin NON autorisée:', origin);
+      // En production, rejeter. En dev, autoriser pour debug
       callback(null, process.env.NODE_ENV !== 'production');
     }
   },
@@ -41,6 +48,9 @@ const corsOptions = {
   preflightContinue: false,
   optionsSuccessStatus: 204
 };
+
+// ✅ Le middleware cors() gère automatiquement les OPTIONS
+app.use(cors(corsOptions));
 
 // ✅ Le middleware cors() gère automatiquement les OPTIONS
 app.use(cors(corsOptions));
