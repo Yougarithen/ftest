@@ -1,24 +1,21 @@
-
-// ========== authRoutes.js - VERSION COMPLÈTE SÉCURISÉE ==========
+// ========== authRoutes.js - VERSION SIMPLIFIÉE POUR DEBUG ==========
 const express = require('express');
 const router = express.Router();
 const AuthController = require('../controllers/authController');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
-const { rateLimitMiddleware, auditMiddleware } = require('../middleware/securityMiddleware');
+
+// Middleware de sécurité temporairement désactivés pour debug
+// Réactive-les une fois que l'authentification fonctionne
 
 // ============================================================
-// ROUTES PUBLIQUES (avec rate limiting)
+// ROUTES PUBLIQUES
 // ============================================================
 
 router.post('/register', 
-  rateLimitMiddleware,
-  auditMiddleware('INSCRIPTION', 'authentification'),
   AuthController.register
 );
 
 router.post('/login', 
-  rateLimitMiddleware,
-  auditMiddleware('TENTATIVE_CONNEXION', 'authentification'),
   AuthController.login
 );
 
@@ -33,7 +30,6 @@ router.get('/profile',
 
 router.post('/change-password', 
   authenticate,
-  auditMiddleware('CHANGEMENT_MOT_DE_PASSE', 'securite'),
   AuthController.changePassword
 );
 
@@ -44,7 +40,6 @@ router.get('/verify',
 
 router.post('/logout',
   authenticate,
-  auditMiddleware('DECONNEXION', 'authentification'),
   AuthController.logout
 );
 
@@ -62,13 +57,7 @@ router.get('/sessions',
 
 router.delete('/sessions/:id_session',
   authenticate,
-  auditMiddleware('REVOCATION_SESSION', 'securite'),
   AuthController.revokeSession
 );
-console.log({
-  rateLimitMiddleware,
-  auditMiddleware,
-  authenticate,
-  AuthController
-});
+
 module.exports = router;
