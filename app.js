@@ -35,9 +35,8 @@ const corsOptions = {
   maxAge: 86400
 };
 
+// ✅ Le middleware cors() gère automatiquement les OPTIONS
 app.use(cors(corsOptions));
-// ⚠️ CORRECTION ICI : remplacer '*' par '(.*)'
-app.options('(.*)', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
