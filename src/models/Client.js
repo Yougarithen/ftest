@@ -1,25 +1,24 @@
-// Model pour les clients
-const db = require('../database/connection');
+// Model pour les clients - PostgreSQL
+const pool = require('../database/connection');
 
 class Client {
   
-  static getAll() {
-    const stmt = db.prepare('SELECT * FROM Client ORDER BY nom');
-    return stmt.all();
+  static async getAll() {
+    const result = await pool.query('SELECT * FROM Client ORDER BY nom');
+    return result.rows;
   }
 
-  static getById(id) {
-    const stmt = db.prepare('SELECT * FROM Client WHERE id_client = ?');
-    return stmt.get(id);
+  static async getById(id) {
+    const result = await pool.query('SELECT * FROM Client WHERE id_client = $1', [id]);
+    return result.rows[0];
   }
 
-  static create(data) {
-    const stmt = db.prepare(`
+  static async create(data) {
+    const result = await pool.query(`
       INSERT INTO Client (nom, numero_rc, nif, n_article, adresse, contact, telephone, email, assujetti_tva, TypeC)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `, [
       data.nom,
       data.numero_rc || null,
       data.nif || null,
@@ -29,21 +28,20 @@ class Client {
       data.telephone || null,
       data.email || null,
       data.assujetti_tva !== undefined ? data.assujetti_tva : 1,
-      data.TypeC || 'Entreprise' // Valeur par défaut
-    );
+      data.TypeC || 'Entreprise'
+    ]);
     
-    return this.getById(result.lastInsertRowid);
+    return result.rows[0];
   }
 
-  static update(id, data) {
-    const stmt = db.prepare(`
+  static async update(id, data) {
+    const result = await pool.query(`
       UPDATE Client 
-      SET nom = ?, numero_rc = ?, nif = ?, n_article = ?, adresse = ?, 
-          contact = ?, telephone = ?, email = ?, assujetti_tva = ?, TypeC = ?
-      WHERE id_client = ?
-    `);
-    
-    stmt.run(
+      SET nom = $1, numero_rc = $2, nif = $3, n_article = $4, adresse = $5, 
+          contact = $6, telephone = $7, email = $8, assujetti_tva = $9, TypeC = $10
+      WHERE id_client = $11
+      RETURNING *
+    `, [
       data.nom,
       data.numero_rc,
       data.nif,
@@ -55,28 +53,28 @@ class Client {
       data.assujetti_tva,
       data.TypeC || 'Entreprise',
       id
-    );
+    ]);
     
-    return this.getById(id);
+    return result.rows[0];
   }
 
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM Client WHERE id_client = ?');
-    return stmt.run(id);
+  static async delete(id) {
+    const result = await pool.query('DELETE FROM Client WHERE id_client = $1', [id]);
+    return result.rowCount;
   }
 
   // Récupérer les crédits d'un client
-  static getCredits(id) {
-    const stmt = db.prepare(`
-      SELECT * FROM Vue_CreditsClients WHERE id_client = ?
-    `);
-    return stmt.get(id);
+  static async getCredits(id) {
+    const result = await pool.query(`
+      SELECT * FROM Vue_CreditsClients WHERE id_client = $1
+    `, [id]);
+    return result.rows[0];
   }
 
   // Récupérer tous les types de clients distincts
-  static getTypes() {
-    const stmt = db.prepare('SELECT DISTINCT TypeC FROM Client ORDER BY TypeC');
-    return stmt.all();
+  static async getTypes() {
+    const result = await pool.query('SELECT DISTINCT TypeC FROM Client ORDER BY TypeC');
+    return result.rows;
   }
 }
 

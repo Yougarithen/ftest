@@ -1,54 +1,47 @@
-// Model pour les matières premières
-const db = require('../database/connection');
+// Model pour les matières premières - PostgreSQL
+const pool = require('../database/connection');
 
 class MatierePremiere {
   
-  // Récupérer toutes les matières premières
-  static getAll() {
-    const stmt = db.prepare('SELECT * FROM MatierePremiere ORDER BY nom');
-    return stmt.all();
+  static async getAll() {
+    const result = await pool.query('SELECT * FROM MatierePremiere ORDER BY nom');
+    return result.rows;
   }
 
-  // Récupérer une matière par son ID
-  static getById(id) {
-    const stmt = db.prepare('SELECT * FROM MatierePremiere WHERE id_matiere = ?');
-    return stmt.get(id);
+  static async getById(id) {
+    const result = await pool.query('SELECT * FROM MatierePremiere WHERE id_matiere = $1', [id]);
+    return result.rows[0];
   }
 
-  // Récupérer les matières par type
-  static getByType(type) {
-    const stmt = db.prepare('SELECT * FROM MatierePremiere WHERE typeM = ? ORDER BY nom');
-    return stmt.all(type);
+  static async getByType(type) {
+    const result = await pool.query('SELECT * FROM MatierePremiere WHERE typeM = $1 ORDER BY nom', [type]);
+    return result.rows;
   }
 
-  // Créer une nouvelle matière première
-  static create(data) {
-    const stmt = db.prepare(`
+  static async create(data) {
+    const result = await pool.query(`
       INSERT INTO MatierePremiere (nom, unite, typeM, stock_actuel, stock_minimum, prix_unitaire)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [
       data.nom,
       data.unite,
-      data.typeM || data.type_matiere, // Support des deux noms
+      data.typeM || data.type_matiere,
       data.stock_actuel || 0,
       data.stock_minimum || 0,
       data.prix_unitaire || null
-    );
+    ]);
     
-    return this.getById(result.lastInsertRowid);
+    return result.rows[0];
   }
 
-  // Mettre à jour une matière première
-  static update(id, data) {
-    const stmt = db.prepare(`
+  static async update(id, data) {
+    const result = await pool.query(`
       UPDATE MatierePremiere 
-      SET nom = ?, unite = ?, typeM = ?, stock_actuel = ?, stock_minimum = ?, prix_unitaire = ?
-      WHERE id_matiere = ?
-    `);
-    
-    stmt.run(
+      SET nom = $1, unite = $2, typeM = $3, stock_actuel = $4, stock_minimum = $5, prix_unitaire = $6
+      WHERE id_matiere = $7
+      RETURNING *
+    `, [
       data.nom,
       data.unite,
       data.typeM || data.type_matiere,
@@ -56,26 +49,23 @@ class MatierePremiere {
       data.stock_minimum,
       data.prix_unitaire,
       id
-    );
+    ]);
     
-    return this.getById(id);
+    return result.rows[0];
   }
 
-  // Supprimer une matière première
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM MatierePremiere WHERE id_matiere = ?');
-    return stmt.run(id);
+  static async delete(id) {
+    const result = await pool.query('DELETE FROM MatierePremiere WHERE id_matiere = $1', [id]);
+    return result.rowCount;
   }
 
-  // Récupérer les matières en alerte de stock
-  static getAlertes() {
-    const stmt = db.prepare('SELECT * FROM Vue_AlerteStock');
-    return stmt.all();
+  static async getAlertes() {
+    const result = await pool.query('SELECT * FROM Vue_AlerteStock');
+    return result.rows;
   }
 
-  // Récupérer les statistiques par type
-  static getStatsByType() {
-    const stmt = db.prepare(`
+  static async getStatsByType() {
+    const result = await pool.query(`
       SELECT 
         typeM as type,
         COUNT(*) as nb_matieres,
@@ -86,38 +76,52 @@ class MatierePremiere {
       GROUP BY typeM
       ORDER BY typeM
     `);
-    return stmt.all();
+    return result.rows;
   }
 
-  // Ajuster le stock
-  static ajusterStock(id, quantite, responsable, motif) {
-    const matiere = this.getById(id);
-    if (!matiere) throw new Error('Matière première introuvable');
-
-    const nouvelleQuantite = matiere.stock_actuel + quantite;
+  static async ajusterStock(id, quantite, responsable, motif) {
+    const client = await pool.connect();
     
-    // Enregistrer l'ajustement
-    const stmtAjustement = db.prepare(`
-      INSERT INTO AjustementStock (type_article, id_article, type_ajustement, quantite_avant, quantite_ajustee, quantite_apres, responsable, motif)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmtAjustement.run(
-      'MATIERE',
-      id,
-      quantite > 0 ? 'AJOUT' : 'RETRAIT',
-      matiere.stock_actuel,
-      quantite,
-      nouvelleQuantite,
-      responsable,
-      motif
-    );
+    try {
+      await client.query('BEGIN');
+      
+      const matiereResult = await client.query('SELECT * FROM MatierePremiere WHERE id_matiere = $1', [id]);
+      const matiere = matiereResult.rows[0];
+      
+      if (!matiere) throw new Error('Matière première introuvable');
 
-    // Mettre à jour le stock
-    const stmtUpdate = db.prepare('UPDATE MatierePremiere SET stock_actuel = ? WHERE id_matiere = ?');
-    stmtUpdate.run(nouvelleQuantite, id);
+      const nouvelleQuantite = parseFloat(matiere.stock_actuel) + parseFloat(quantite);
+      
+      // Enregistrer l'ajustement
+      await client.query(`
+        INSERT INTO AjustementStock (type_article, id_article, type_ajustement, quantite_avant, quantite_ajustee, quantite_apres, responsable, motif)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        'MATIERE',
+        id,
+        quantite > 0 ? 'AJOUT' : 'RETRAIT',
+        matiere.stock_actuel,
+        quantite,
+        nouvelleQuantite,
+        responsable,
+        motif
+      ]);
 
-    return this.getById(id);
+      // Mettre à jour le stock
+      const updateResult = await client.query(
+        'UPDATE MatierePremiere SET stock_actuel = $1 WHERE id_matiere = $2 RETURNING *',
+        [nouvelleQuantite, id]
+      );
+
+      await client.query('COMMIT');
+      return updateResult.rows[0];
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

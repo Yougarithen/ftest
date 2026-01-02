@@ -1,10 +1,10 @@
-// ========== models/LigneDevis.js ==========
-const db = require('../database/connection');
+// ========== models/LigneDevis.js - PostgreSQL ==========
+const pool = require('../database/connection');
 
 class LigneDevis {
   
-  static getAll() {
-    const stmt = db.prepare(`
+  static async getAll() {
+    const result = await pool.query(`
       SELECT ld.*, 
              d.numero_devis,
              p.nom as produit_nom,
@@ -16,11 +16,11 @@ class LigneDevis {
       JOIN Produit p ON ld.id_produit = p.id_produit
       ORDER BY d.date_devis DESC, ld.id_ligne
     `);
-    return stmt.all();
+    return result.rows;
   }
 
-  static getById(id) {
-    const stmt = db.prepare(`
+  static async getById(id) {
+    const result = await pool.query(`
       SELECT ld.*, 
              d.numero_devis,
              p.nom as produit_nom, p.code_produit,
@@ -30,13 +30,13 @@ class LigneDevis {
       FROM LigneDevis ld
       JOIN Devis d ON ld.id_devis = d.id_devis
       JOIN Produit p ON ld.id_produit = p.id_produit
-      WHERE ld.id_ligne = ?
-    `);
-    return stmt.get(id);
+      WHERE ld.id_ligne = $1
+    `, [id]);
+    return result.rows[0];
   }
 
-  static getByDevis(id_devis) {
-    const stmt = db.prepare(`
+  static async getByDevis(id_devis) {
+    const result = await pool.query(`
       SELECT ld.*, 
              p.nom as produit_nom, p.code_produit,
              (ld.quantite * ld.prix_unitaire_ht * (1 - ld.remise_ligne/100)) as montant_ht,
@@ -44,19 +44,18 @@ class LigneDevis {
              (ld.quantite * ld.prix_unitaire_ht * (1 - ld.remise_ligne/100) * (1 + ld.taux_tva/100)) as montant_ttc
       FROM LigneDevis ld
       JOIN Produit p ON ld.id_produit = p.id_produit
-      WHERE ld.id_devis = ?
+      WHERE ld.id_devis = $1
       ORDER BY ld.id_ligne
-    `);
-    return stmt.all(id_devis);
+    `, [id_devis]);
+    return result.rows;
   }
 
-  static create(data) {
-    const stmt = db.prepare(`
+  static async create(data) {
+    const result = await pool.query(`
       INSERT INTO LigneDevis (id_devis, id_produit, quantite, unite_vente, prix_unitaire_ht, taux_tva, remise_ligne, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *
+    `, [
       data.id_devis,
       data.id_produit,
       data.quantite,
@@ -65,20 +64,19 @@ class LigneDevis {
       data.taux_tva,
       data.remise_ligne || 0,
       data.description || null
-    );
+    ]);
     
-    return this.getById(result.lastInsertRowid);
+    return this.getById(result.rows[0].id_ligne);
   }
 
-  static update(id, data) {
-    const stmt = db.prepare(`
+  static async update(id, data) {
+    const result = await pool.query(`
       UPDATE LigneDevis 
-      SET id_produit = ?, quantite = ?, unite_vente = ?, prix_unitaire_ht = ?, 
-          taux_tva = ?, remise_ligne = ?, description = ?
-      WHERE id_ligne = ?
-    `);
-    
-    stmt.run(
+      SET id_produit = $1, quantite = $2, unite_vente = $3, prix_unitaire_ht = $4, 
+          taux_tva = $5, remise_ligne = $6, description = $7
+      WHERE id_ligne = $8
+      RETURNING *
+    `, [
       data.id_produit,
       data.quantite,
       data.unite_vente,
@@ -87,19 +85,18 @@ class LigneDevis {
       data.remise_ligne,
       data.description,
       id
-    );
+    ]);
     
     return this.getById(id);
   }
 
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM LigneDevis WHERE id_ligne = ?');
-    return stmt.run(id);
+  static async delete(id) {
+    const result = await pool.query('DELETE FROM LigneDevis WHERE id_ligne = $1', [id]);
+    return result.rowCount;
   }
 
-  // Calculer les totaux d'une ligne
-  static calculerTotaux(id) {
-    const ligne = this.getById(id);
+  static async calculerTotaux(id) {
+    const ligne = await this.getById(id);
     if (!ligne) return null;
 
     return {
@@ -111,4 +108,3 @@ class LigneDevis {
 }
 
 module.exports = LigneDevis;
-

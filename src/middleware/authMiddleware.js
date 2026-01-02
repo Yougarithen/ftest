@@ -1,6 +1,6 @@
-// src/middleware/authMiddleware.js
+// src/middleware/authMiddleware.js - PostgreSQL
 const jwt = require('jsonwebtoken');
-const db = require('../database/connection');
+const pool = require('../database/connection');
 
 /**
  * Middleware d'authentification avec vérification de session en base de données
@@ -38,15 +38,17 @@ const authenticate = async (req, res, next) => {
     }
 
     // Vérifier la session dans la base de données
-    const session = db.prepare(`
+    const result = await pool.query(`
       SELECT 
         s.*,
         u.actif as user_actif
       FROM SessionToken s
       JOIN Utilisateur u ON s.id_utilisateur = u.id_utilisateur
-      WHERE s.token_hash = ? 
+      WHERE s.token_hash = $1
       AND s.actif = 1
-    `).get(token);
+    `, [token]);
+
+    const session = result.rows[0];
 
     if (!session) {
       return res.status(401).json({
@@ -70,11 +72,11 @@ const authenticate = async (req, res, next) => {
     
     if (now > expirationDate) {
       // Désactiver la session expirée
-      db.prepare(`
+      await pool.query(`
         UPDATE SessionToken
         SET actif = 0
-        WHERE id_session = ?
-      `).run(session.id_session);
+        WHERE id_session = $1
+      `, [session.id_session]);
 
       return res.status(401).json({
         success: false,
@@ -84,11 +86,11 @@ const authenticate = async (req, res, next) => {
     }
 
     // Mettre à jour la dernière activité
-    db.prepare(`
+    await pool.query(`
       UPDATE SessionToken
-      SET date_derniere_activite = datetime('now')
-      WHERE id_session = ?
-    `).run(session.id_session);
+      SET date_derniere_activite = NOW()
+      WHERE id_session = $1
+    `, [session.id_session]);
 
     // Ajouter les infos utilisateur et session à la requête
     req.user = decoded;
@@ -173,12 +175,14 @@ const optionalAuth = async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       
       // Vérifier la session
-      const session = db.prepare(`
+      const result = await pool.query(`
         SELECT * FROM SessionToken 
-        WHERE token_hash = ? 
+        WHERE token_hash = $1
         AND actif = 1
-        AND date_expiration > datetime('now')
-      `).get(token);
+        AND date_expiration > NOW()
+      `, [token]);
+
+      const session = result.rows[0];
 
       if (session) {
         req.user = decoded;

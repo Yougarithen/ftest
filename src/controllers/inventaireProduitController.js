@@ -1,18 +1,18 @@
-// ========== controllers/inventaireProduitController.js ==========
+// Controller pour inventaire produits - PostgreSQL
 const InventaireProduit = require('../models/InventaireProduit');
 
-exports.getAll = (req, res) => {
+exports.getAll = async (req, res) => {
   try {
-    const lignes = InventaireProduit.getAll();
+    const lignes = await InventaireProduit.getAll();
     res.json({ success: true, data: lignes });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-exports.getById = (req, res) => {
+exports.getById = async (req, res) => {
   try {
-    const ligne = InventaireProduit.getById(req.params.id);
+    const ligne = await InventaireProduit.getById(req.params.id);
     if (!ligne) {
       return res.status(404).json({ success: false, error: 'Ligne non trouvée' });
     }
@@ -22,45 +22,45 @@ exports.getById = (req, res) => {
   }
 };
 
-exports.getByInventaire = (req, res) => {
+exports.getByInventaire = async (req, res) => {
   try {
-    const lignes = InventaireProduit.getByInventaire(req.params.id_inventaire);
+    const lignes = await InventaireProduit.getByInventaire(req.params.id_inventaire);
     res.json({ success: true, data: lignes });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-exports.create = (req, res) => {
+exports.create = async (req, res) => {
   try {
-    const ligne = InventaireProduit.create(req.body);
+    const ligne = await InventaireProduit.create(req.body);
     res.status(201).json({ success: true, data: ligne });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
 };
 
-exports.update = (req, res) => {
+exports.update = async (req, res) => {
   try {
-    const ligne = InventaireProduit.update(req.params.id, req.body);
+    const ligne = await InventaireProduit.update(req.params.id, req.body);
     res.json({ success: true, data: ligne });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
 };
 
-exports.delete = (req, res) => {
+exports.delete = async (req, res) => {
   try {
-    InventaireProduit.delete(req.params.id);
+    await InventaireProduit.delete(req.params.id);
     res.json({ success: true, message: 'Ligne supprimée' });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
 };
 
-exports.getEcartsSignificatifs = (req, res) => {
+exports.getEcartsSignificatifs = async (req, res) => {
   try {
-    const ecarts = InventaireProduit.getEcartsSignificatifs(req.params.id_inventaire);
+    const ecarts = await InventaireProduit.getEcartsSignificatifs(req.params.id_inventaire);
     res.json({ success: true, data: ecarts });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

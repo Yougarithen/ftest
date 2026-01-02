@@ -1,111 +1,126 @@
-
-// Model pour les inventaires
-const db = require('../database/connection');
+// Model pour les inventaires - PostgreSQL
+const pool = require('../database/connection');
 
 class Inventaire {
   
-  static getAll() {
-    const stmt = db.prepare('SELECT * FROM Inventaire ORDER BY date_inventaire DESC');
-    return stmt.all();
+  static async getAll() {
+    const result = await pool.query('SELECT * FROM Inventaire ORDER BY date_inventaire DESC');
+    return result.rows;
   }
 
-  static getById(id) {
-    const inventaire = db.prepare('SELECT * FROM Inventaire WHERE id_inventaire = ?').get(id);
+  static async getById(id) {
+    const inventaireResult = await pool.query('SELECT * FROM Inventaire WHERE id_inventaire = $1', [id]);
+    const inventaire = inventaireResult.rows[0];
     if (!inventaire) return null;
 
-    inventaire.matieres = db.prepare('SELECT * FROM Vue_EcartInventaireMatiere WHERE id_inventaire = ?').all(id);
-    inventaire.produits = db.prepare('SELECT * FROM Vue_EcartInventaireProduit WHERE id_inventaire = ?').all(id);
+    const matieresResult = await pool.query('SELECT * FROM Vue_EcartInventaireMatiere WHERE id_inventaire = $1', [id]);
+    const produitsResult = await pool.query('SELECT * FROM Vue_EcartInventaireProduit WHERE id_inventaire = $1', [id]);
+    
+    inventaire.matieres = matieresResult.rows;
+    inventaire.produits = produitsResult.rows;
 
     return inventaire;
   }
 
-  static create(data) {
-    const stmt = db.prepare(`
+  static async create(data) {
+    const result = await pool.query(`
       INSERT INTO Inventaire (responsable, statut, commentaire)
-      VALUES (?, ?, ?)
-    `);
-    
-    const result = stmt.run(
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `, [
       data.responsable,
       data.statut || 'En cours',
       data.commentaire || null
-    );
+    ]);
     
-    return this.getById(result.lastInsertRowid);
+    return this.getById(result.rows[0].id_inventaire);
   }
 
-  static update(id, data) {
-    const stmt = db.prepare(`
+  static async update(id, data) {
+    const result = await pool.query(`
       UPDATE Inventaire 
-      SET responsable = ?, statut = ?, commentaire = ?
-      WHERE id_inventaire = ?
-    `);
+      SET responsable = $1, statut = $2, commentaire = $3
+      WHERE id_inventaire = $4
+      RETURNING *
+    `, [data.responsable, data.statut, data.commentaire, id]);
     
-    stmt.run(data.responsable, data.statut, data.commentaire, id);
     return this.getById(id);
   }
 
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM Inventaire WHERE id_inventaire = ?');
-    return stmt.run(id);
+  static async delete(id) {
+    const result = await pool.query('DELETE FROM Inventaire WHERE id_inventaire = $1', [id]);
+    return result.rowCount;
   }
 
-  // Ajouter une ligne d'inventaire matière
-  static ajouterLigneMatiere(id_inventaire, id_matiere, stock_physique) {
-    const matiere = db.prepare('SELECT stock_actuel FROM MatierePremiere WHERE id_matiere = ?').get(id_matiere);
+  static async ajouterLigneMatiere(id_inventaire, id_matiere, stock_physique) {
+    const matiereResult = await pool.query('SELECT stock_actuel FROM MatierePremiere WHERE id_matiere = $1', [id_matiere]);
+    const matiere = matiereResult.rows[0];
     
-    const stmt = db.prepare(`
+    const result = await pool.query(`
       INSERT INTO InventaireMatiere (id_inventaire, id_matiere, stock_theorique, stock_physique)
-      VALUES (?, ?, ?, ?)
-    `);
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `, [id_inventaire, id_matiere, matiere.stock_actuel, stock_physique]);
     
-    return stmt.run(id_inventaire, id_matiere, matiere.stock_actuel, stock_physique);
+    return result.rows[0];
   }
 
-  // Ajouter une ligne d'inventaire produit
-  static ajouterLigneProduit(id_inventaire, id_produit, stock_physique) {
-    const produit = db.prepare('SELECT stock_actuel FROM Produit WHERE id_produit = ?').get(id_produit);
+  static async ajouterLigneProduit(id_inventaire, id_produit, stock_physique) {
+    const produitResult = await pool.query('SELECT stock_actuel FROM Produit WHERE id_produit = $1', [id_produit]);
+    const produit = produitResult.rows[0];
     
-    const stmt = db.prepare(`
+    const result = await pool.query(`
       INSERT INTO InventaireProduit (id_inventaire, id_produit, stock_theorique, stock_physique)
-      VALUES (?, ?, ?, ?)
-    `);
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `, [id_inventaire, id_produit, produit.stock_actuel, stock_physique]);
     
-    return stmt.run(id_inventaire, id_produit, produit.stock_actuel, stock_physique);
+    return result.rows[0];
   }
 
-  // Clôturer un inventaire et ajuster les stocks
-  static cloturer(id, responsable) {
-    const inventaire = this.getById(id);
+  static async cloturer(id, responsable) {
+    const inventaire = await this.getById(id);
     if (!inventaire) throw new Error('Inventaire introuvable');
     if (inventaire.statut !== 'En cours') throw new Error('L\'inventaire est déjà clôturé');
 
     const MatierePremiere = require('./MatierePremiere');
+    const client = await pool.connect();
 
-    // Ajuster les stocks des matières
-    inventaire.matieres.forEach(ligne => {
-      if (ligne.ecart !== 0) {
-        MatierePremiere.ajusterStock(
-          ligne.id_matiere,
-          ligne.ecart,
-          responsable,
-          `Ajustement suite à inventaire #${id}`
-        );
+    try {
+      await client.query('BEGIN');
+
+      // Ajuster les stocks des matières
+      for (const ligne of inventaire.matieres) {
+        if (ligne.ecart !== 0) {
+          await MatierePremiere.ajusterStock(
+            ligne.id_matiere,
+            ligne.ecart,
+            responsable,
+            `Ajustement suite à inventaire #${id}`
+          );
+        }
       }
-    });
 
-    // Ajuster les stocks des produits
-    inventaire.produits.forEach(ligne => {
-      if (ligne.ecart !== 0) {
-        db.prepare('UPDATE Produit SET stock_actuel = ? WHERE id_produit = ?')
-          .run(ligne.stock_physique, ligne.id_produit);
+      // Ajuster les stocks des produits
+      for (const ligne of inventaire.produits) {
+        if (ligne.ecart !== 0) {
+          await client.query('UPDATE Produit SET stock_actuel = $1 WHERE id_produit = $2', 
+            [ligne.stock_physique, ligne.id_produit]);
+        }
       }
-    });
 
-    // Mettre à jour le statut de l'inventaire
-    db.prepare('UPDATE Inventaire SET statut = ? WHERE id_inventaire = ?').run('Clôturé', id);
+      // Mettre à jour le statut de l'inventaire
+      await client.query('UPDATE Inventaire SET statut = $1 WHERE id_inventaire = $2', ['Clôturé', id]);
 
-    return this.getById(id);
+      await client.query('COMMIT');
+      return this.getById(id);
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

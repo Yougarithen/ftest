@@ -1,5 +1,5 @@
-// src/models/userModel.js
-const db = require('../database/connection');
+// src/models/userModel.js - PostgreSQL
+const pool = require('../database/connection');
 const bcrypt = require('bcryptjs');
 
 class userModel {
@@ -7,11 +7,12 @@ class userModel {
   static async create({ nom_utilisateur, email, mot_de_passe, nom_complet, id_role = 5 }) {
     try {
       // Vérifier si l'utilisateur existe déjà
-      const existingUser = db.prepare(
-        'SELECT * FROM Utilisateur WHERE nom_utilisateur = ? OR email = ?'
-      ).get(nom_utilisateur, email);
+      const existingUser = await pool.query(
+        'SELECT * FROM Utilisateur WHERE nom_utilisateur = $1 OR email = $2',
+        [nom_utilisateur, email]
+      );
 
-      if (existingUser) {
+      if (existingUser.rows.length > 0) {
         throw new Error('Nom d\'utilisateur ou email déjà utilisé');
       }
 
@@ -19,20 +20,21 @@ class userModel {
       const mot_de_passe_hash = await bcrypt.hash(mot_de_passe, 10);
 
       // Insérer l'utilisateur
-      const result = db.prepare(`
+      const result = await pool.query(`
         INSERT INTO Utilisateur (nom_utilisateur, email, mot_de_passe_hash, nom_complet, id_role)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(nom_utilisateur, email, mot_de_passe_hash, nom_complet, id_role);
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id_utilisateur
+      `, [nom_utilisateur, email, mot_de_passe_hash, nom_complet, id_role]);
 
-      return this.findById(result.lastInsertRowid);
+      return this.findById(result.rows[0].id_utilisateur);
     } catch (error) {
       throw error;
     }
   }
 
   // Trouver un utilisateur par ID
-  static findById(id) {
-    return db.prepare(`
+  static async findById(id) {
+    const result = await pool.query(`
       SELECT 
         u.id_utilisateur,
         u.nom_utilisateur,
@@ -46,42 +48,46 @@ class userModel {
         r.description as role_description
       FROM Utilisateur u
       JOIN Role r ON u.id_role = r.id_role
-      WHERE u.id_utilisateur = ?
-    `).get(id);
+      WHERE u.id_utilisateur = $1
+    `, [id]);
+    return result.rows[0];
   }
 
   // Trouver un utilisateur par email
-  static findByEmail(email) {
-    return db.prepare(`
+  static async findByEmail(email) {
+    const result = await pool.query(`
       SELECT 
         u.*,
         r.nom as role,
         r.description as role_description
       FROM Utilisateur u
       JOIN Role r ON u.id_role = r.id_role
-      WHERE u.email = ?
-    `).get(email);
+      WHERE u.email = $1
+    `, [email]);
+    return result.rows[0];
   }
 
   // Trouver un utilisateur par nom d'utilisateur
-  static findByUsername(nom_utilisateur) {
-    return db.prepare(`
+  static async findByUsername(nom_utilisateur) {
+    const result = await pool.query(`
       SELECT 
         u.*,
         r.nom as role,
         r.description as role_description
       FROM Utilisateur u
       JOIN Role r ON u.id_role = r.id_role
-      WHERE u.nom_utilisateur = ?
-    `).get(nom_utilisateur);
+      WHERE u.nom_utilisateur = $1
+    `, [nom_utilisateur]);
+    return result.rows[0];
   }
 
   // Obtenir tous les utilisateurs
-  static getAll() {
-    return db.prepare(`
+  static async getAll() {
+    const result = await pool.query(`
       SELECT * FROM Vue_UtilisateursComplet
       ORDER BY date_creation DESC
-    `).all();
+    `);
+    return result.rows;
   }
 
   // Vérifier le mot de passe
@@ -90,41 +96,44 @@ class userModel {
   }
 
   // Mettre à jour la dernière connexion
-  static updateLastLogin(id) {
-    return db.prepare(`
+  static async updateLastLogin(id) {
+    const result = await pool.query(`
       UPDATE Utilisateur 
       SET derniere_connexion = CURRENT_TIMESTAMP 
-      WHERE id_utilisateur = ?
-    `).run(id);
+      WHERE id_utilisateur = $1
+      RETURNING *
+    `, [id]);
+    return result.rowCount;
   }
 
   // Mettre à jour un utilisateur
-  static update(id, { nom_complet, email, id_role, actif }) {
+  static async update(id, { nom_complet, email, id_role, actif }) {
     const updates = [];
     const values = [];
+    let paramIndex = 1;
 
     if (nom_complet !== undefined) {
-      updates.push('nom_complet = ?');
+      updates.push(`nom_complet = $${paramIndex++}`);
       values.push(nom_complet);
     }
     if (email !== undefined) {
-      updates.push('email = ?');
+      updates.push(`email = $${paramIndex++}`);
       values.push(email);
     }
     if (id_role !== undefined) {
-      updates.push('id_role = ?');
+      updates.push(`id_role = $${paramIndex++}`);
       values.push(id_role);
     }
     if (actif !== undefined) {
-      updates.push('actif = ?');
+      updates.push(`actif = $${paramIndex++}`);
       values.push(actif ? 1 : 0);
     }
 
-    updates.push('date_modification = CURRENT_TIMESTAMP');
+    updates.push(`date_modification = CURRENT_TIMESTAMP`);
     values.push(id);
 
-    const query = `UPDATE Utilisateur SET ${updates.join(', ')} WHERE id_utilisateur = ?`;
-    db.prepare(query).run(...values);
+    const query = `UPDATE Utilisateur SET ${updates.join(', ')} WHERE id_utilisateur = $${paramIndex}`;
+    await pool.query(query, values);
 
     return this.findById(id);
   }
@@ -132,63 +141,68 @@ class userModel {
   // Changer le mot de passe
   static async changePassword(id, newPassword) {
     const mot_de_passe_hash = await bcrypt.hash(newPassword, 10);
-    db.prepare(`
+    await pool.query(`
       UPDATE Utilisateur 
-      SET mot_de_passe_hash = ?, date_modification = CURRENT_TIMESTAMP 
-      WHERE id_utilisateur = ?
-    `).run(mot_de_passe_hash, id);
+      SET mot_de_passe_hash = $1, date_modification = CURRENT_TIMESTAMP 
+      WHERE id_utilisateur = $2
+    `, [mot_de_passe_hash, id]);
     return true;
   }
 
   // Supprimer un utilisateur
-  static delete(id) {
-    return db.prepare('DELETE FROM Utilisateur WHERE id_utilisateur = ?').run(id);
+  static async delete(id) {
+    const result = await pool.query('DELETE FROM Utilisateur WHERE id_utilisateur = $1', [id]);
+    return result.rowCount;
   }
 
   // Obtenir les permissions d'un utilisateur
-  static getPermissions(id) {
+  static async getPermissions(id) {
     // Permissions via le rôle
-    const rolePermissions = db.prepare(`
+    const rolePermissions = await pool.query(`
       SELECT DISTINCT p.nom
       FROM Permission p
       JOIN RolePermission rp ON p.id_permission = rp.id_permission
       JOIN Utilisateur u ON rp.id_role = u.id_role
-      WHERE u.id_utilisateur = ?
-    `).all(id);
+      WHERE u.id_utilisateur = $1
+    `, [id]);
 
     // Permissions individuelles
-    const userPermissions = db.prepare(`
+    const userPermissions = await pool.query(`
       SELECT DISTINCT p.nom
       FROM Permission p
       JOIN UtilisateurPermission up ON p.id_permission = up.id_permission
-      WHERE up.id_utilisateur = ?
-    `).all(id);
+      WHERE up.id_utilisateur = $1
+    `, [id]);
 
     // Combiner et retourner un tableau unique
-    const allPermissions = [...rolePermissions, ...userPermissions];
+    const allPermissions = [...rolePermissions.rows, ...userPermissions.rows];
     return [...new Set(allPermissions.map(p => p.nom))];
   }
 
   // Vérifier si un utilisateur a une permission spécifique
-  static hasPermission(id, permissionName) {
-    const permissions = this.getPermissions(id);
+  static async hasPermission(id, permissionName) {
+    const permissions = await this.getPermissions(id);
     return permissions.includes(permissionName);
   }
 
   // Attribuer une permission individuelle à un utilisateur
-  static grantPermission(userId, permissionId) {
-    return db.prepare(`
-      INSERT OR IGNORE INTO UtilisateurPermission (id_utilisateur, id_permission)
-      VALUES (?, ?)
-    `).run(userId, permissionId);
+  static async grantPermission(userId, permissionId) {
+    const result = await pool.query(`
+      INSERT INTO UtilisateurPermission (id_utilisateur, id_permission)
+      VALUES ($1, $2)
+      ON CONFLICT DO NOTHING
+      RETURNING *
+    `, [userId, permissionId]);
+    return result.rowCount;
   }
 
   // Retirer une permission individuelle à un utilisateur
-  static revokePermission(userId, permissionId) {
-    return db.prepare(`
+  static async revokePermission(userId, permissionId) {
+    const result = await pool.query(`
       DELETE FROM UtilisateurPermission 
-      WHERE id_utilisateur = ? AND id_permission = ?
-    `).run(userId, permissionId);
+      WHERE id_utilisateur = $1 AND id_permission = $2
+    `, [userId, permissionId]);
+    return result.rowCount;
   }
 }
 

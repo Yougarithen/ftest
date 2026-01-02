@@ -1,25 +1,24 @@
-// Model pour les produits finis
-const db = require('../database/connection');
+// Model pour les produits finis - PostgreSQL
+const pool = require('../database/connection');
 
 class Produit {
   
-  static getAll() {
-    const stmt = db.prepare('SELECT * FROM Produit ORDER BY nom');
-    return stmt.all();
+  static async getAll() {
+    const result = await pool.query('SELECT * FROM Produit ORDER BY nom');
+    return result.rows;
   }
 
-  static getById(id) {
-    const stmt = db.prepare('SELECT * FROM Produit WHERE id_produit = ?');
-    return stmt.get(id);
+  static async getById(id) {
+    const result = await pool.query('SELECT * FROM Produit WHERE id_produit = $1', [id]);
+    return result.rows[0];
   }
 
-  static create(data) {
-    const stmt = db.prepare(`
+  static async create(data) {
+    const result = await pool.query(`
       INSERT INTO Produit (code_produit, nom, description, unite, poids, unite_poids, stock_actuel, prix_vente_suggere, taux_tva, soumis_taxe)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `, [
       data.code_produit || null,
       data.nom,
       data.description || null,
@@ -30,20 +29,19 @@ class Produit {
       data.prix_vente_suggere || null,
       data.taux_tva || 19.00,
       data.soumis_taxe !== undefined ? data.soumis_taxe : 1
-    );
+    ]);
     
-    return this.getById(result.lastInsertRowid);
+    return result.rows[0];
   }
 
-  static update(id, data) {
-    const stmt = db.prepare(`
+  static async update(id, data) {
+    const result = await pool.query(`
       UPDATE Produit 
-      SET code_produit = ?, nom = ?, description = ?, unite = ?, poids = ?, 
-          unite_poids = ?, prix_vente_suggere = ?, taux_tva = ?, soumis_taxe = ?
-      WHERE id_produit = ?
-    `);
-    
-    stmt.run(
+      SET code_produit = $1, nom = $2, description = $3, unite = $4, poids = $5, 
+          unite_poids = $6, prix_vente_suggere = $7, taux_tva = $8, soumis_taxe = $9
+      WHERE id_produit = $10
+      RETURNING *
+    `, [
       data.code_produit,
       data.nom,
       data.description,
@@ -54,34 +52,35 @@ class Produit {
       data.taux_tva,
       data.soumis_taxe,
       id
-    );
+    ]);
     
-    return this.getById(id);
+    return result.rows[0];
   }
 
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM Produit WHERE id_produit = ?');
-    return stmt.run(id);
+  static async delete(id) {
+    const result = await pool.query('DELETE FROM Produit WHERE id_produit = $1', [id]);
+    return result.rowCount;
   }
 
   // Récupérer la recette de production d'un produit
-  static getRecette(id) {
-    const stmt = db.prepare(`
+  static async getRecette(id) {
+    const result = await pool.query(`
       SELECT rp.*, mp.nom as nom_matiere, mp.unite
       FROM RecetteProduction rp
       JOIN MatierePremiere mp ON rp.id_matiere = mp.id_matiere
-      WHERE rp.id_produit = ?
-    `);
-    return stmt.all(id);
+      WHERE rp.id_produit = $1
+    `, [id]);
+    return result.rows;
   }
 
   // Ajouter un ingrédient à la recette
-  static ajouterIngredient(id_produit, id_matiere, quantite) {
-    const stmt = db.prepare(`
+  static async ajouterIngredient(id_produit, id_matiere, quantite) {
+    const result = await pool.query(`
       INSERT INTO RecetteProduction (id_produit, id_matiere, quantite_necessaire)
-      VALUES (?, ?, ?)
-    `);
-    return stmt.run(id_produit, id_matiere, quantite);
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `, [id_produit, id_matiere, quantite]);
+    return result.rows[0];
   }
 }
 

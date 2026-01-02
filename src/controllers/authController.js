@@ -1,7 +1,7 @@
-// src/controllers/authController.js
+// src/controllers/authController.js - PostgreSQL
 const jwt = require('jsonwebtoken');
 const UserModel = require('../models/userModel');
-const db = require('../database/connection');
+const pool = require('../database/connection');
 
 class AuthController {
   // =========================
@@ -65,17 +65,17 @@ class AuthController {
       }
 
       // Chercher l'utilisateur
-      let user = UserModel.findByEmail(identifiant);
+      let user = await UserModel.findByEmail(identifiant);
       if (!user) {
-        user = UserModel.findByUsername(identifiant);
+        user = await UserModel.findByUsername(identifiant);
       }
 
       if (!user) {
         // Enregistrer la tentative échouée
-        db.prepare(`
+        await pool.query(`
           INSERT INTO TentativeConnexion (identifiant, ip_address, user_agent, succes, raison)
-          VALUES (?, ?, ?, 0, 'Utilisateur non trouvé')
-        `).run(identifiant, ip, userAgent);
+          VALUES ($1, $2, $3, FALSE, 'Utilisateur non trouvé')
+        `, [identifiant, ip, userAgent]);
 
         return res.status(401).json({
           success: false,
@@ -98,10 +98,10 @@ class AuthController {
 
       if (!isPasswordValid) {
         // Enregistrer la tentative échouée
-        db.prepare(`
+        await pool.query(`
           INSERT INTO TentativeConnexion (identifiant, ip_address, user_agent, succes, raison, id_utilisateur)
-          VALUES (?, ?, ?, 0, 'Mot de passe incorrect', ?)
-        `).run(identifiant, ip, userAgent, user.id_utilisateur);
+          VALUES ($1, $2, $3, FALSE, 'Mot de passe incorrect', $4)
+        `, [identifiant, ip, userAgent, user.id_utilisateur]);
 
         return res.status(401).json({
           success: false,
@@ -111,15 +111,15 @@ class AuthController {
 
       // === GESTION SESSION UNIQUE ===
       // Désactiver toutes les sessions actives de cet utilisateur
-      db.prepare(`
+      await pool.query(`
         UPDATE SessionToken
         SET actif = 0
-        WHERE id_utilisateur = ? AND actif = 1
-      `).run(user.id_utilisateur);
+        WHERE id_utilisateur = $1 AND actif = 1
+      `, [user.id_utilisateur]);
 
       // Mettre à jour la dernière connexion
-      UserModel.updateLastLogin(user.id_utilisateur);
-      const permissions = UserModel.getPermissions(user.id_utilisateur);
+      await UserModel.updateLastLogin(user.id_utilisateur);
+      const permissions = await UserModel.getPermissions(user.id_utilisateur);
 
       // Durée de session (par défaut 8h)
       const sessionDuration = process.env.JWT_EXPIRES_IN || '8h';
@@ -142,32 +142,33 @@ class AuthController {
       const expirationDate = new Date(Date.now() + expirationMs);
 
       // Enregistrer la session dans la base de données
-      const sessionResult = db.prepare(`
+      const sessionResult = await pool.query(`
         INSERT INTO SessionToken (
           id_utilisateur, 
           token_hash, 
           ip_address, 
           user_agent, 
           date_expiration
-        ) VALUES (?, ?, ?, ?, ?)
-      `).run(
+        ) VALUES ($1, $2, $3, $4, $5)
+        RETURNING id_session
+      `, [
         user.id_utilisateur,
         token,
         ip,
         userAgent,
         expirationDate.toISOString()
-      );
+      ]);
 
       // Enregistrer la tentative réussie
-      db.prepare(`
+      await pool.query(`
         INSERT INTO TentativeConnexion (
           identifiant, 
           ip_address, 
           user_agent,
           succes, 
           id_utilisateur
-        ) VALUES (?, ?, ?, 1, ?)
-      `).run(identifiant, ip, userAgent, user.id_utilisateur);
+        ) VALUES ($1, $2, $3, TRUE, $4)
+      `, [identifiant, ip, userAgent, user.id_utilisateur]);
 
       delete user.mot_de_passe_hash;
 
@@ -180,7 +181,7 @@ class AuthController {
             permissions
           },
           token,
-          sessionId: sessionResult.lastInsertRowid,
+          sessionId: sessionResult.rows[0].id_session,
           expiresAt: expirationDate.toISOString()
         }
       });
@@ -213,9 +214,9 @@ class AuthController {
   // =========================
   // PROFIL UTILISATEUR
   // =========================
-  static getProfile(req, res) {
+  static async getProfile(req, res) {
     try {
-      const user = UserModel.findById(req.user.id);
+      const user = await UserModel.findById(req.user.id);
 
       if (!user) {
         return res.status(404).json({
@@ -224,7 +225,7 @@ class AuthController {
         });
       }
 
-      const permissions = UserModel.getPermissions(user.id_utilisateur);
+      const permissions = await UserModel.getPermissions(user.id_utilisateur);
 
       res.json({
         success: true,
@@ -262,7 +263,7 @@ class AuthController {
         });
       }
 
-      const user = UserModel.findByEmail(req.user.email);
+      const user = await UserModel.findByEmail(req.user.email);
 
       const isPasswordValid = await UserModel.verifyPassword(
         ancien_mot_de_passe,
@@ -279,11 +280,11 @@ class AuthController {
       await UserModel.changePassword(req.user.id, nouveau_mot_de_passe);
 
       // Déconnecter toutes les autres sessions
-      db.prepare(`
+      await pool.query(`
         UPDATE SessionToken
         SET actif = 0
-        WHERE id_utilisateur = ? AND token_hash != ?
-      `).run(req.user.id, req.token);
+        WHERE id_utilisateur = $1 AND token_hash != $2
+      `, [req.user.id, req.token]);
 
       res.json({
         success: true,
@@ -314,15 +315,15 @@ class AuthController {
   // =========================
   // DÉCONNEXION
   // =========================
-  static logout(req, res) {
+  static async logout(req, res) {
     try {
       // Désactiver la session actuelle
       if (req.session && req.session.id_session) {
-        db.prepare(`
+        await pool.query(`
           UPDATE SessionToken
           SET actif = 0
-          WHERE id_session = ?
-        `).run(req.session.id_session);
+          WHERE id_session = $1
+        `, [req.session.id_session]);
       }
 
       res.json({
@@ -340,23 +341,23 @@ class AuthController {
   // =========================
   // HISTORIQUE DES CONNEXIONS
   // =========================
-  static getLoginHistory(req, res) {
+  static async getLoginHistory(req, res) {
     try {
-      const history = db.prepare(`
+      const result = await pool.query(`
         SELECT 
           date_tentative,
           ip_address,
           succes,
           raison
         FROM TentativeConnexion
-        WHERE id_utilisateur = ?
+        WHERE id_utilisateur = $1
         ORDER BY date_tentative DESC
         LIMIT 50
-      `).all(req.user.id);
+      `, [req.user.id]);
 
       res.json({
         success: true,
-        data: history
+        data: result.rows
       });
     } catch (error) {
       res.status(500).json({
@@ -369,9 +370,9 @@ class AuthController {
   // =========================
   // SESSIONS ACTIVES
   // =========================
-  static getActiveSessions(req, res) {
+  static async getActiveSessions(req, res) {
     try {
-      const sessions = db.prepare(`
+      const result = await pool.query(`
         SELECT 
           id_session,
           ip_address,
@@ -380,15 +381,15 @@ class AuthController {
           date_expiration,
           date_derniere_activite
         FROM SessionToken
-        WHERE id_utilisateur = ? 
+        WHERE id_utilisateur = $1
         AND actif = 1 
-        AND date_expiration > datetime('now')
+        AND date_expiration > NOW()
         ORDER BY date_creation DESC
-      `).all(req.user.id);
+      `, [req.user.id]);
 
       res.json({
         success: true,
-        data: sessions
+        data: result.rows
       });
     } catch (error) {
       res.status(500).json({
@@ -401,28 +402,28 @@ class AuthController {
   // =========================
   // RÉVOCATION DE SESSION
   // =========================
-  static revokeSession(req, res) {
+  static async revokeSession(req, res) {
     try {
       const { id_session } = req.params;
 
       // Vérifier que la session appartient à l'utilisateur
-      const session = db.prepare(`
+      const result = await pool.query(`
         SELECT * FROM SessionToken 
-        WHERE id_session = ? AND id_utilisateur = ?
-      `).get(id_session, req.user.id);
+        WHERE id_session = $1 AND id_utilisateur = $2
+      `, [id_session, req.user.id]);
 
-      if (!session) {
+      if (result.rows.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'Session non trouvée'
         });
       }
 
-      db.prepare(`
+      await pool.query(`
         UPDATE SessionToken
         SET actif = 0
-        WHERE id_session = ?
-      `).run(id_session);
+        WHERE id_session = $1
+      `, [id_session]);
 
       res.json({
         success: true,

@@ -1,105 +1,69 @@
-// Connexion simple à la base de données SQLite
-const Database = require('better-sqlite3');
-const fs = require('fs');
-const path = require('path');
+// Connexion PostgreSQL pour Railway
+const { Pool } = require('pg');
 require('dotenv').config();
 
-// 🔧 CONFIGURATION DU CHEMIN DE LA BASE DE DONNÉES
-function getDatabasePath() {
-  // En production (Railway), utiliser le volume monté
-  if (process.env.NODE_ENV === 'production') {
-    return process.env.DATABASE_PATH || '/data/stock.db';
-  }
-  // En développement, utiliser le chemin local
-  return process.env.DATABASE_PATH || './database/stock.db';
-}
+// 🔧 CONFIGURATION PostgreSQL
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? {
+    rejectUnauthorized: false
+  } : false,
+  // Configuration optimale
+  max: 20, // Maximum de connexions dans le pool
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
 
-const DATABASE_PATH = getDatabasePath();
-console.log(`📍 Chemin de la base de données : ${DATABASE_PATH}`);
+// Test de connexion
+pool.on('connect', () => {
+  console.log('✅ Connexion PostgreSQL établie');
+});
 
-// Créer le dossier database s'il n'existe pas
-const dbDir = path.dirname(DATABASE_PATH);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-  console.log(`✅ Dossier créé : ${dbDir}`);
-}
+pool.on('error', (err) => {
+  console.error('❌ Erreur PostgreSQL inattendue:', err);
+});
 
-// Connexion à la base de données
-let db;
-try {
-  db = new Database(DATABASE_PATH, { 
-    verbose: process.env.NODE_ENV === 'development' ? console.log : null 
-  });
-  console.log('✅ Connexion à la base de données établie');
-} catch (error) {
-  console.error('❌ Erreur de connexion à la base de données:', error.message);
-  throw error;
-}
-
-// Activer les clés étrangères (important pour SQLite)
-db.pragma('foreign_keys = ON');
-
-// Configuration optimale pour SQLite en production
-if (process.env.NODE_ENV === 'production') {
-  // Améliore les performances en production
-  db.pragma('journal_mode = WAL'); // Write-Ahead Logging
-  db.pragma('synchronous = NORMAL'); // Balance entre vitesse et sécurité
-  db.pragma('cache_size = -64000'); // 64MB de cache
-  db.pragma('temp_store = MEMORY'); // Utiliser la RAM pour les tables temporaires
-  console.log('✅ Optimisations SQLite appliquées pour la production');
-}
-
-// Fonction pour initialiser la base de données avec le schéma
-function initDatabase() {
+// Fonction pour tester la connexion
+async function testConnection() {
   try {
-    const schemaPath = path.join(__dirname, 'schema.sql');
-    
-    // Si le fichier schema.sql existe, l'exécuter
-    if (fs.existsSync(schemaPath)) {
-      const schema = fs.readFileSync(schemaPath, 'utf-8');
-      db.exec(schema);
-      console.log('✅ Base de données initialisée avec succès');
-    } else {
-      console.warn('⚠️  Fichier schema.sql introuvable');
-    }
+    const result = await pool.query('SELECT NOW()');
+    console.log('✅ Base de données PostgreSQL connectée:', result.rows[0].now);
+    return true;
   } catch (error) {
-    console.error('❌ Erreur lors de l\'initialisation de la base de données:', error.message);
+    console.error('❌ Erreur de connexion à PostgreSQL:', error.message);
     throw error;
   }
 }
 
-// Initialiser la base au démarrage si elle est vide
-try {
-  const tableCount = db.prepare("SELECT COUNT(*) as count FROM sqlite_master WHERE type='table'").get();
-  
-  if (tableCount.count === 0) {
-    console.log('📦 Création de la base de données...');
-    initDatabase();
-  } else {
-    console.log(`✅ Base de données existante (${tableCount.count} tables trouvées)`);
-  }
-} catch (error) {
-  console.error('❌ Erreur lors de la vérification de la base:', error.message);
-}
-
-// Fonction pour fermer proprement la connexion (utile pour les tests)
-function closeDatabase() {
-  if (db) {
-    db.close();
-    console.log('🔌 Connexion à la base de données fermée');
+// Fonction pour fermer proprement la connexion
+async function closeDatabase() {
+  try {
+    await pool.end();
+    console.log('🔌 Pool PostgreSQL fermé');
+  } catch (error) {
+    console.error('❌ Erreur lors de la fermeture:', error.message);
   }
 }
 
 // Gestion de l'arrêt propre de l'application
-process.on('SIGINT', () => {
-  closeDatabase();
+process.on('SIGINT', async () => {
+  await closeDatabase();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
-  closeDatabase();
+process.on('SIGTERM', async () => {
+  await closeDatabase();
   process.exit(0);
 });
 
-module.exports = db;
+// Tester la connexion au démarrage
+if (process.env.DATABASE_URL) {
+  testConnection().catch(err => {
+    console.error('⚠️ Impossible de se connecter à la base de données');
+  });
+} else {
+  console.warn('⚠️ DATABASE_URL non défini - configuration PostgreSQL manquante');
+}
+
+module.exports = pool;
 module.exports.closeDatabase = closeDatabase;

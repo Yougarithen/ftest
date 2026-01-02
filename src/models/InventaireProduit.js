@@ -1,113 +1,106 @@
-// ========== models/InventaireProduit.js ==========
-const db = require('../database/connection');
+// ========== models/InventaireProduit.js - PostgreSQL ==========
+const pool = require('../database/connection');
 
 class InventaireProduit {
   
-  static getAll() {
-    const stmt = db.prepare(`
+  static async getAll() {
+    const result = await pool.query(`
       SELECT ip.*, 
              i.date_inventaire, i.responsable, i.statut as inventaire_statut,
              p.nom as produit_nom, p.unite,
              (ip.stock_physique - ip.stock_theorique) as ecart,
              CASE 
                WHEN ip.stock_theorique = 0 THEN 0
-               ELSE ROUND(((ip.stock_physique - ip.stock_theorique) * 100.0 / ip.stock_theorique), 2)
+               ELSE ROUND(((ip.stock_physique - ip.stock_theorique) * 100.0 / ip.stock_theorique)::numeric, 2)
              END as ecart_pourcent
       FROM InventaireProduit ip
       JOIN Inventaire i ON ip.id_inventaire = i.id_inventaire
       JOIN Produit p ON ip.id_produit = p.id_produit
       ORDER BY i.date_inventaire DESC, p.nom
     `);
-    return stmt.all();
+    return result.rows;
   }
 
-  static getById(id) {
-    const stmt = db.prepare(`
+  static async getById(id) {
+    const result = await pool.query(`
       SELECT ip.*, 
              i.date_inventaire, i.responsable, i.statut as inventaire_statut,
              p.nom as produit_nom, p.unite, p.prix_vente_suggere,
              (ip.stock_physique - ip.stock_theorique) as ecart,
              CASE 
                WHEN ip.stock_theorique = 0 THEN 0
-               ELSE ROUND(((ip.stock_physique - ip.stock_theorique) * 100.0 / ip.stock_theorique), 2)
+               ELSE ROUND(((ip.stock_physique - ip.stock_theorique) * 100.0 / ip.stock_theorique)::numeric, 2)
              END as ecart_pourcent,
              ((ip.stock_physique - ip.stock_theorique) * p.prix_vente_suggere) as valeur_ecart
       FROM InventaireProduit ip
       JOIN Inventaire i ON ip.id_inventaire = i.id_inventaire
       JOIN Produit p ON ip.id_produit = p.id_produit
-      WHERE ip.id_ligne_inv = ?
-    `);
-    return stmt.get(id);
+      WHERE ip.id_ligne_inv = $1
+    `, [id]);
+    return result.rows[0];
   }
 
-  static getByInventaire(id_inventaire) {
-    const stmt = db.prepare(`
+  static async getByInventaire(id_inventaire) {
+    const result = await pool.query(`
       SELECT ip.*, 
              p.nom as produit_nom, p.unite, p.prix_vente_suggere,
              (ip.stock_physique - ip.stock_theorique) as ecart,
              CASE 
                WHEN ip.stock_theorique = 0 THEN 0
-               ELSE ROUND(((ip.stock_physique - ip.stock_theorique) * 100.0 / ip.stock_theorique), 2)
+               ELSE ROUND(((ip.stock_physique - ip.stock_theorique) * 100.0 / ip.stock_theorique)::numeric, 2)
              END as ecart_pourcent,
              ((ip.stock_physique - ip.stock_theorique) * p.prix_vente_suggere) as valeur_ecart
       FROM InventaireProduit ip
       JOIN Produit p ON ip.id_produit = p.id_produit
-      WHERE ip.id_inventaire = ?
+      WHERE ip.id_inventaire = $1
       ORDER BY p.nom
-    `);
-    return stmt.all(id_inventaire);
+    `, [id_inventaire]);
+    return result.rows;
   }
 
-  static create(data) {
-    // Récupérer le stock théorique actuel
-    const produit = db.prepare('SELECT stock_actuel FROM Produit WHERE id_produit = ?').get(data.id_produit);
+  static async create(data) {
+    const produitResult = await pool.query('SELECT stock_actuel FROM Produit WHERE id_produit = $1', [data.id_produit]);
+    const produit = produitResult.rows[0];
     
-    const stmt = db.prepare(`
+    const result = await pool.query(`
       INSERT INTO InventaireProduit (id_inventaire, id_produit, stock_theorique, stock_physique)
-      VALUES (?, ?, ?, ?)
-    `);
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `, [data.id_inventaire, data.id_produit, produit.stock_actuel, data.stock_physique]);
     
-    const result = stmt.run(
-      data.id_inventaire,
-      data.id_produit,
-      produit.stock_actuel,
-      data.stock_physique
-    );
-    
-    return this.getById(result.lastInsertRowid);
+    return this.getById(result.rows[0].id_ligne_inv);
   }
 
-  static update(id, data) {
-    const stmt = db.prepare(`
+  static async update(id, data) {
+    const result = await pool.query(`
       UPDATE InventaireProduit 
-      SET stock_physique = ?
-      WHERE id_ligne_inv = ?
-    `);
+      SET stock_physique = $1
+      WHERE id_ligne_inv = $2
+      RETURNING *
+    `, [data.stock_physique, id]);
     
-    stmt.run(data.stock_physique, id);
     return this.getById(id);
   }
 
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM InventaireProduit WHERE id_ligne_inv = ?');
-    return stmt.run(id);
+  static async delete(id) {
+    const result = await pool.query('DELETE FROM InventaireProduit WHERE id_ligne_inv = $1', [id]);
+    return result.rowCount;
   }
 
-  // Récupérer les écarts significatifs (> 5%)
-  static getEcartsSignificatifs(id_inventaire) {
-    const stmt = db.prepare(`
+  static async getEcartsSignificatifs(id_inventaire) {
+    const result = await pool.query(`
       SELECT ip.*, 
              p.nom as produit_nom, p.unite, p.prix_vente_suggere,
              (ip.stock_physique - ip.stock_theorique) as ecart,
-             ROUND(((ip.stock_physique - ip.stock_theorique) * 100.0 / ip.stock_theorique), 2) as ecart_pourcent,
+             ROUND(((ip.stock_physique - ip.stock_theorique) * 100.0 / ip.stock_theorique)::numeric, 2) as ecart_pourcent,
              ((ip.stock_physique - ip.stock_theorique) * p.prix_vente_suggere) as valeur_ecart
       FROM InventaireProduit ip
       JOIN Produit p ON ip.id_produit = p.id_produit
-      WHERE ip.id_inventaire = ?
+      WHERE ip.id_inventaire = $1
         AND ABS((ip.stock_physique - ip.stock_theorique) * 100.0 / NULLIF(ip.stock_theorique, 0)) > 5
       ORDER BY ABS(ip.stock_physique - ip.stock_theorique) DESC
-    `);
-    return stmt.all(id_inventaire);
+    `, [id_inventaire]);
+    return result.rows;
   }
 }
 

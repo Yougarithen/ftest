@@ -1,12 +1,10 @@
-// models/Production.js
-const db = require('../database/connection');
+// models/Production.js - PostgreSQL
+const pool = require('../database/connection');
 
 class Production {
-  /**
-   * Récupérer toutes les productions avec détails
-   */
-  static getAll() {
-    const query = `
+  
+  static async getAll() {
+    const result = await pool.query(`
       SELECT 
         p.*,
         pr.nom as produit_nom,
@@ -14,79 +12,55 @@ class Production {
       FROM Production p
       JOIN Produit pr ON p.id_produit = pr.id_produit
       ORDER BY p.date_production DESC
-    `;
-    return db.prepare(query).all();
+    `);
+    return result.rows;
   }
 
-  /**
-   * Récupérer une production par ID
-   */
-  static getById(id) {
-    const query = `
+  static async getById(id) {
+    const result = await pool.query(`
       SELECT 
         p.*,
         pr.nom as produit_nom,
         pr.unite
       FROM Production p
       JOIN Produit pr ON p.id_produit = pr.id_produit
-      WHERE p.id_production = ?
-    `;
-    return db.prepare(query).get(id);
+      WHERE p.id_production = $1
+    `, [id]);
+    return result.rows[0];
   }
 
-  /**
-   * Récupérer les productions d'un produit
-   */
-  static getByProduit(id_produit) {
-    const query = `
+  static async getByProduit(id_produit) {
+    const result = await pool.query(`
       SELECT 
         p.*,
         pr.nom as produit_nom,
         pr.unite
       FROM Production p
       JOIN Produit pr ON p.id_produit = pr.id_produit
-      WHERE p.id_produit = ?
+      WHERE p.id_produit = $1
       ORDER BY p.date_production DESC
-    `;
-    return db.prepare(query).all(id_produit);
+    `, [id_produit]);
+    return result.rows;
   }
 
-  /**
-   * Créer une entrée de production simple (sans logique)
-   */
-  static create(data) {
+  static async create(data) {
     const { id_produit, quantite_produite, operateur, commentaire } = data;
 
     if (!id_produit || !quantite_produite || !operateur) {
       throw new Error('Données manquantes (id_produit, quantite_produite, operateur requis)');
     }
 
-    const query = `
+    const result = await pool.query(`
       INSERT INTO Production 
       (id_produit, quantite_produite, date_production, operateur, commentaire)
-      VALUES (?, ?, datetime('now'), ?, ?)
-    `;
+      VALUES ($1, $2, NOW(), $3, $4)
+      RETURNING *
+    `, [id_produit, quantite_produite, operateur, commentaire || null]);
 
-    const result = db.prepare(query).run(
-      id_produit,
-      quantite_produite,
-      operateur,
-      commentaire || null
-    );
-
-    return this.getById(result.lastInsertRowid);
+    return this.getById(result.rows[0].id_production);
   }
 
-  /**
-   * 🎯 PRODUIRE - Simplifié avec triggers SQL
-   * Les triggers se chargent automatiquement de :
-   * - Vérifier le stock des matières premières (BEFORE INSERT)
-   * - Déduire les matières premières (AFTER INSERT)
-   * - Augmenter le stock du produit fini (AFTER INSERT)
-   * - Enregistrer dans AjustementStock (AFTER INSERT - optionnel)
-   */
-  static produire(id_produit, quantite_produite, operateur, commentaire = null) {
-    // Validation de base
+  static async produire(id_produit, quantite_produite, operateur, commentaire = null) {
     if (!id_produit || !quantite_produite || !operateur) {
       throw new Error('Données manquantes (id_produit, quantite_produite, operateur requis)');
     }
@@ -95,31 +69,31 @@ class Production {
       throw new Error('La quantité doit être supérieure à 0');
     }
 
-    // Vérifier que le produit existe
-    const produit = db.prepare('SELECT * FROM Produit WHERE id_produit = ?').get(id_produit);
-    if (!produit) {
-      throw new Error('Produit non trouvé');
-    }
+    const client = await pool.connect();
 
     try {
-      // ✅ SIMPLE : Juste insérer dans Production
-      // Les triggers font tout le reste automatiquement !
-      const result = db.prepare(`
+      await client.query('BEGIN');
+
+      // Vérifier que le produit existe
+      const produitResult = await client.query('SELECT * FROM Produit WHERE id_produit = $1', [id_produit]);
+      if (produitResult.rows.length === 0) {
+        throw new Error('Produit non trouvé');
+      }
+
+      // ✅ Insérer dans Production (les triggers font le reste)
+      const result = await client.query(`
         INSERT INTO Production 
         (id_produit, quantite_produite, date_production, operateur, commentaire)
-        VALUES (?, ?, datetime('now'), ?, ?)
-      `).run(id_produit, quantite_produite, operateur, commentaire || null);
+        VALUES ($1, $2, NOW(), $3, $4)
+        RETURNING *
+      `, [id_produit, quantite_produite, operateur, commentaire || null]);
 
-      // Récupérer la production créée avec les détails
-      const production = this.getById(result.lastInsertRowid);
-      
-      return production;
+      await client.query('COMMIT');
+      return this.getById(result.rows[0].id_production);
 
     } catch (error) {
-      // Les triggers peuvent lever des erreurs RAISE(ABORT, 'message')
-      // qui seront catchées ici
+      await client.query('ROLLBACK');
       
-      // Vérifier si c'est une erreur de stock insuffisant
       if (error.message.includes('Stock insuffisant')) {
         throw new Error('Stock insuffisant pour une ou plusieurs matières premières');
       }
@@ -128,21 +102,18 @@ class Production {
         throw new Error('Aucune recette définie pour ce produit. Veuillez d\'abord créer une recette.');
       }
 
-      // Autres erreurs
       throw error;
+    } finally {
+      client.release();
     }
   }
 
-  /**
-   * Vérifier le stock avant production
-   * Utile pour l'interface utilisateur (afficher les alertes)
-   */
-  static verifierStock(id_produit, quantite) {
+  static async verifierStock(id_produit, quantite) {
     if (quantite <= 0) {
       throw new Error('La quantité doit être supérieure à 0');
     }
 
-    const recette = db.prepare(`
+    const result = await pool.query(`
       SELECT 
         r.id_recette,
         r.id_produit,
@@ -153,8 +124,10 @@ class Production {
         m.unite
       FROM RecetteProduction r
       JOIN MatierePremiere m ON r.id_matiere = m.id_matiere
-      WHERE r.id_produit = ?
-    `).all(id_produit);
+      WHERE r.id_produit = $1
+    `, [id_produit]);
+
+    const recette = result.rows;
 
     if (recette.length === 0) {
       throw new Error('Aucune recette définie pour ce produit');
@@ -195,17 +168,13 @@ class Production {
     };
   }
 
-  /**
-   * Supprimer une production
-   * Note : Tu pourrais ajouter un trigger pour annuler les mouvements de stock
-   */
-  static delete(id) {
-    const production = this.getById(id);
+  static async delete(id) {
+    const production = await this.getById(id);
     if (!production) {
       throw new Error('Production non trouvée');
     }
 
-    db.prepare('DELETE FROM Production WHERE id_production = ?').run(id);
+    await pool.query('DELETE FROM Production WHERE id_production = $1', [id]);
     return true;
   }
 }

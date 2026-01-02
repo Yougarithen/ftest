@@ -1,10 +1,10 @@
-// Model pour les ajustements de stock
-const db = require('../database/connection');
+// Model pour les ajustements de stock - PostgreSQL
+const pool = require('../database/connection');
 
 class AjustementStock {
   
-  static getAll() {
-    const stmt = db.prepare(`
+  static async getAll() {
+    const result = await pool.query(`
       SELECT a.*,
         CASE 
           WHEN a.type_article = 'MATIERE' THEN m.nom
@@ -15,32 +15,31 @@ class AjustementStock {
       LEFT JOIN Produit p ON a.type_article = 'PRODUIT' AND a.id_article = p.id_produit
       ORDER BY a.date_ajustement DESC
     `);
-    return stmt.all();
+    return result.rows;
   }
 
-  static getById(id) {
-    const stmt = db.prepare('SELECT * FROM AjustementStock WHERE id_ajustement = ?');
-    return stmt.get(id);
+  static async getById(id) {
+    const result = await pool.query('SELECT * FROM AjustementStock WHERE id_ajustement = $1', [id]);
+    return result.rows[0];
   }
 
-  static getByArticle(type_article, id_article) {
-    const stmt = db.prepare(`
+  static async getByArticle(type_article, id_article) {
+    const result = await pool.query(`
       SELECT * FROM AjustementStock 
-      WHERE type_article = ? AND id_article = ?
+      WHERE type_article = $1 AND id_article = $2
       ORDER BY date_ajustement DESC
-    `);
-    return stmt.all(type_article, id_article);
+    `, [type_article, id_article]);
+    return result.rows;
   }
 
-  static getByInventaire(id_inventaire) {
-    const stmt = db.prepare(`
+  static async getByInventaire(id_inventaire) {
+    const result = await pool.query(`
       SELECT * FROM AjustementStock 
-      WHERE id_inventaire = ?
+      WHERE id_inventaire = $1
       ORDER BY date_ajustement DESC
-    `);
-    return stmt.all(id_inventaire);
+    `, [id_inventaire]);
+    return result.rows;
   }
 }
 
 module.exports = AjustementStock;
-

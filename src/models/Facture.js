@@ -1,12 +1,11 @@
-// Model pour les factures - VERSION CORRIGÉE
-const db = require('../database/connection');
+// Model pour les factures - PostgreSQL VERSION CORRIGÉE
+const pool = require('../database/connection');
 
 class Facture {
   
-  static getAll() {
-    // ✅ CORRECTION: Calculer les montants SANS JOIN sur Paiement
-    // puis récupérer la somme des paiements séparément
-    const stmt = db.prepare(`
+  static async getAll() {
+    // ✅ Calculer les montants SANS JOIN sur Paiement puis récupérer séparément
+    const facturesResult = await pool.query(`
       SELECT 
         f.id_facture,
         f.numero_facture,
@@ -22,36 +21,34 @@ class Facture {
       FROM Facture f
       LEFT JOIN Client c ON f.id_client = c.id_client
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
-      GROUP BY f.id_facture
+      GROUP BY f.id_facture, c.nom
       ORDER BY f.date_facture DESC
     `);
     
-    const factures = stmt.all();
+    const factures = facturesResult.rows;
     
-    // ✅ Récupérer les montants payés pour toutes les factures en une seule requête
-    const paiementsStmt = db.prepare(`
+    // ✅ Récupérer les montants payés pour toutes les factures
+    const paiementsResult = await pool.query(`
       SELECT id_facture, COALESCE(SUM(montant_paye), 0) as montant_paye
       FROM Paiement
       GROUP BY id_facture
     `);
     
-    const paiements = paiementsStmt.all();
     const paiementsMap = {};
-    paiements.forEach(p => {
-      paiementsMap[p.id_facture] = p.montant_paye;
+    paiementsResult.rows.forEach(p => {
+      paiementsMap[p.id_facture] = parseFloat(p.montant_paye);
     });
     
-    // ✅ Ajouter montant_paye et montant_restant à chaque facture
+    // ✅ Ajouter montant_paye et montant_restant
     return factures.map(f => ({
       ...f,
       montant_paye: paiementsMap[f.id_facture] || 0,
-      montant_restant: f.montant_ttc - (paiementsMap[f.id_facture] || 0)
+      montant_restant: parseFloat(f.montant_ttc) - (paiementsMap[f.id_facture] || 0)
     }));
   }
 
-  static getById(id) {
-    // ✅ CORRECTION: Même logique pour getById
-    const facture = db.prepare(`
+  static async getById(id) {
+    const factureResult = await pool.query(`
       SELECT 
         f.id_facture,
         f.numero_facture,
@@ -69,40 +66,42 @@ class Facture {
       FROM Facture f
       LEFT JOIN Client c ON f.id_client = c.id_client
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
-      WHERE f.id_facture = ?
-      GROUP BY f.id_facture
-    `).get(id);
+      WHERE f.id_facture = $1
+      GROUP BY f.id_facture, c.nom
+    `, [id]);
     
+    const facture = factureResult.rows[0];
     if (!facture) return null;
 
     // ✅ Récupérer le montant payé séparément
-    const paiementResult = db.prepare(`
+    const paiementResult = await pool.query(`
       SELECT COALESCE(SUM(montant_paye), 0) as montant_paye
       FROM Paiement
-      WHERE id_facture = ?
-    `).get(id);
+      WHERE id_facture = $1
+    `, [id]);
     
-    facture.montant_paye = paiementResult.montant_paye;
-    facture.montant_restant = facture.montant_ttc - facture.montant_paye;
+    facture.montant_paye = parseFloat(paiementResult.rows[0].montant_paye);
+    facture.montant_restant = parseFloat(facture.montant_ttc) - facture.montant_paye;
 
     // Récupérer les lignes avec le nom du produit
-    const lignes = db.prepare(`
+    const lignesResult = await pool.query(`
       SELECT 
         lf.*,
         p.nom as produit_nom
       FROM LigneFacture lf
       LEFT JOIN Produit p ON lf.id_produit = p.id_produit
-      WHERE lf.id_facture = ?
-    `).all(id);
+      WHERE lf.id_facture = $1
+    `, [id]);
     
-    facture.lignes = lignes;
+    facture.lignes = lignesResult.rows;
 
     return facture;
   }
 
-  static create(data) {
+  static async create(data) {
     // Générer un numéro de facture automatique
-    const lastFacture = db.prepare('SELECT numero_facture FROM Facture ORDER BY id_facture DESC LIMIT 1').get();
+    const lastFactureResult = await pool.query('SELECT numero_facture FROM Facture ORDER BY id_facture DESC LIMIT 1');
+    const lastFacture = lastFactureResult.rows[0];
     let numeroFacture = 'FAC-001';
     
     if (lastFacture) {
@@ -110,12 +109,11 @@ class Facture {
       numeroFacture = `FAC-${String(lastNum + 1).padStart(3, '0')}`;
     }
 
-    const stmt = db.prepare(`
+    const result = await pool.query(`
       INSERT INTO Facture (numero_facture, id_client, id_devis, date_facture, date_echeance, statut, type_facture, remise_globale, conditions_paiement, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `, [
       numeroFacture,
       data.id_client,
       data.id_devis || null,
@@ -126,20 +124,19 @@ class Facture {
       data.remise_globale || 0,
       data.conditions_paiement || null,
       data.notes || null
-    );
+    ]);
     
-    return this.getById(result.lastInsertRowid);
+    return this.getById(result.rows[0].id_facture);
   }
 
-  static update(id, data) {
-    const stmt = db.prepare(`
+  static async update(id, data) {
+    const result = await pool.query(`
       UPDATE Facture 
-      SET id_client = ?, date_facture = ?, date_echeance = ?, statut = ?, 
-          type_facture = ?, remise_globale = ?, conditions_paiement = ?, notes = ?, date_modification = CURRENT_TIMESTAMP
-      WHERE id_facture = ?
-    `);
-    
-    stmt.run(
+      SET id_client = $1, date_facture = $2, date_echeance = $3, statut = $4, 
+          type_facture = $5, remise_globale = $6, conditions_paiement = $7, notes = $8, date_modification = CURRENT_TIMESTAMP
+      WHERE id_facture = $9
+      RETURNING *
+    `, [
       data.id_client,
       data.date_facture,
       data.date_echeance,
@@ -149,24 +146,23 @@ class Facture {
       data.conditions_paiement,
       data.notes,
       id
-    );
+    ]);
     
     return this.getById(id);
   }
 
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM Facture WHERE id_facture = ?');
-    return stmt.run(id);
+  static async delete(id) {
+    const result = await pool.query('DELETE FROM Facture WHERE id_facture = $1', [id]);
+    return result.rowCount;
   }
 
   // Ajouter une ligne à la facture
-  static ajouterLigne(id_facture, data) {
-    const stmt = db.prepare(`
+  static async ajouterLigne(id_facture, data) {
+    const result = await pool.query(`
       INSERT INTO LigneFacture (id_facture, id_produit, quantite, unite_vente, prix_unitaire_ht, taux_tva, remise_ligne, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    return stmt.run(
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *
+    `, [
       id_facture,
       data.id_produit,
       data.quantite,
@@ -175,19 +171,21 @@ class Facture {
       data.taux_tva,
       data.remise_ligne || 0,
       data.description || null
-    );
+    ]);
+    
+    return result.rows[0];
   }
 
   // Valider une facture (déclenche la déduction du stock via trigger)
-  static valider(id) {
-    const stmt = db.prepare(`
+  static async valider(id) {
+    const result = await pool.query(`
       UPDATE Facture 
       SET statut = 'Validée', date_validation = CURRENT_TIMESTAMP
-      WHERE id_facture = ? AND statut = 'Brouillon'
-    `);
+      WHERE id_facture = $1 AND statut = 'Brouillon'
+      RETURNING *
+    `, [id]);
     
-    const result = stmt.run(id);
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       throw new Error('La facture ne peut pas être validée');
     }
     
@@ -195,9 +193,9 @@ class Facture {
   }
 
   // Récupérer les factures en crédit
-  static getFacturesCredit() {
-    const stmt = db.prepare('SELECT * FROM Vue_FacturesCredit');
-    return stmt.all();
+  static async getFacturesCredit() {
+    const result = await pool.query('SELECT * FROM Vue_FacturesCredit');
+    return result.rows;
   }
 }
 

@@ -1,18 +1,18 @@
-// Controller pour les devis
+// Controller pour les devis - PostgreSQL
 const Devis = require('../models/Devis');
 
-exports.getAll = (req, res) => {
+exports.getAll = async (req, res) => {
   try {
-    const devis = Devis.getAll();
+    const devis = await Devis.getAll();
     res.json({ success: true, data: devis });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-exports.getById = (req, res) => {
+exports.getById = async (req, res) => {
   try {
-    const devis = Devis.getById(req.params.id);
+    const devis = await Devis.getById(req.params.id);
     if (!devis) {
       return res.status(404).json({ success: false, error: 'Devis non trouvé' });
     }
@@ -22,48 +22,46 @@ exports.getById = (req, res) => {
   }
 };
 
-exports.create = (req, res) => {
+exports.create = async (req, res) => {
   try {
-    const devis = Devis.create(req.body);
+    const devis = await Devis.create(req.body);
     res.status(201).json({ success: true, data: devis });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
 };
 
-exports.update = (req, res) => {
+exports.update = async (req, res) => {
   try {
-    const devis = Devis.update(req.params.id, req.body);
+    const devis = await Devis.update(req.params.id, req.body);
     res.json({ success: true, data: devis });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
 };
 
-exports.delete = (req, res) => {
+exports.delete = async (req, res) => {
   try {
-    Devis.delete(req.params.id);
+    await Devis.delete(req.params.id);
     res.json({ success: true, message: 'Devis supprimé' });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
 };
 
-// POST /api/devis/:id/lignes - Ajouter une ligne
-exports.ajouterLigne = (req, res) => {
+exports.ajouterLigne = async (req, res) => {
   try {
-    Devis.ajouterLigne(req.params.id, req.body);
-    const devis = Devis.getById(req.params.id);
+    await Devis.ajouterLigne(req.params.id, req.body);
+    const devis = await Devis.getById(req.params.id);
     res.json({ success: true, data: devis });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
 };
 
-// POST /api/devis/:id/convertir - Convertir en facture
-exports.convertirEnFacture = (req, res) => {
+exports.convertirEnFacture = async (req, res) => {
   try {
-    const facture = Devis.convertirEnFacture(req.params.id);
+    const facture = await Devis.convertirEnFacture(req.params.id);
     res.json({ success: true, data: facture, message: 'Devis converti en facture' });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
