@@ -113,8 +113,8 @@ class AuthController {
       // Désactiver toutes les sessions actives de cet utilisateur
       await pool.query(`
         UPDATE SessionToken
-    SET actif = false  // ❌ était: actif = 0
-WHERE id_utilisateur = $1 AND actif = true  // ❌ était: actif = 1
+    SET actif = false  
+WHERE id_utilisateur = $1 AND actif = true  
       `, [user.id_utilisateur]);
 
       // Mettre à jour la dernière connexion
@@ -282,7 +282,7 @@ WHERE id_utilisateur = $1 AND actif = true  // ❌ était: actif = 1
       // Déconnecter toutes les autres sessions
       await pool.query(`
   UPDATE SessionToken
-SET actif = false  // ❌ était: actif = 0
+SET actif = false
 WHERE id_utilisateur = $1 AND token_hash != $2
       `, [req.user.id, req.token]);
 
@@ -321,7 +321,7 @@ WHERE id_utilisateur = $1 AND token_hash != $2
       if (req.session && req.session.id_session) {
         await pool.query(`
    UPDATE SessionToken
-SET actif = false  // ❌ était: actif = 0
+SET actif = false
 WHERE id_session = $1
         `, [req.session.id_session]);
       }
@@ -421,7 +421,7 @@ WHERE id_session = $1
 
       await pool.query(`
  UPDATE SessionToken
-SET actif = false  // ❌ était: actif = 0
+SET actif = false  
 WHERE id_session = $1
       `, [id_session]);
 
