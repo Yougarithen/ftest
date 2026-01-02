@@ -6,33 +6,40 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ CONFIGURATION CORS POUR AUTORISER LOCALHOST
+// ✅ CONFIGURATION CORS AMÉLIORÉE
 const corsOptions = {
   origin: function (origin, callback) {
-    // Liste des origines autorisées
-    const allowedOrigins = [
-      'http://localhost:8080',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://127.0.0.1:8080',
-      'http://127.0.0.1:5173'
-    ];
+    // Récupérer les origines depuis .env
+    const allowedOrigins = process.env.ALLOWED_ORIGINS 
+      ? process.env.ALLOWED_ORIGINS.split(',')
+      : [
+          'http://localhost:8080',
+          'http://localhost:5173',
+          'http://localhost:5174',
+          'http://127.0.0.1:8080',
+          'http://127.0.0.1:5173'
+        ];
     
     // Autoriser les requêtes sans origin (Postman, curl, etc.)
     if (!origin) return callback(null, true);
     
     // Vérifier si l'origin est autorisée
     if (allowedOrigins.includes(origin)) {
+      console.log('✅ Origin autorisée:', origin);
       callback(null, true);
     } else {
       console.log('❌ Origin non autorisée:', origin);
-      callback(null, true); // Temporairement autoriser tous pendant le debug
+      // En développement, autoriser quand même
+      callback(null, process.env.NODE_ENV !== 'production');
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
-  maxAge: 86400
+  maxAge: 86400,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
 // ✅ Le middleware cors() gère automatiquement les OPTIONS
