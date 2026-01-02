@@ -1,122 +1,88 @@
 // src/utils/sessionCleanup.js
-// Script de nettoyage automatique des sessions expirées
-
-const db = require('../database/connection');
+const pool = require('../database/connection');
 
 /**
- * Nettoyer les sessions expirées
+ * Nettoie les sessions expirées de la base de données
  */
-function cleanupExpiredSessions() {
+async function cleanExpiredSessions() {
   try {
-    const result = db.prepare(`
-      UPDATE SessionToken
-      SET actif = 0
-      WHERE actif = 1 
-      AND date_expiration < datetime('now')
-    `).run();
-
-    if (result.changes > 0) {
-      console.log(`🧹 ${result.changes} session(s) expirée(s) nettoyée(s)`);
-    }
-
-    return result.changes;
-  } catch (error) {
-    console.error('❌ Erreur nettoyage sessions:', error);
-    return 0;
-  }
-}
-
-/**
- * Supprimer les anciennes sessions inactives (plus de 30 jours)
- */
-function deleteOldSessions(daysOld = 30) {
-  try {
-    const result = db.prepare(`
+    const result = await pool.query(`
       DELETE FROM SessionToken
-      WHERE actif = 0 
-      AND date_creation < datetime('now', '-${daysOld} days')
-    `).run();
-
-    if (result.changes > 0) {
-      console.log(`🗑️  ${result.changes} ancienne(s) session(s) supprimée(s)`);
+      WHERE date_expiration < NOW()
+      AND actif = TRUE
+    `);
+    
+    if (result.rowCount > 0) {
+      console.log(`🧹 ${result.rowCount} session(s) expirée(s) nettoyée(s)`);
     }
-
-    return result.changes;
+    
+    return result.rowCount;
   } catch (error) {
-    console.error('❌ Erreur suppression anciennes sessions:', error);
+    console.error('❌ Erreur lors du nettoyage des sessions:', error.message);
     return 0;
   }
 }
 
 /**
- * Obtenir des statistiques sur les sessions
- */
-function getSessionStats() {
-  try {
-    const stats = {
-      actives: db.prepare(`
-        SELECT COUNT(*) as count FROM SessionToken
-        WHERE actif = 1 AND date_expiration > datetime('now')
-      `).get().count,
-      
-      expirees: db.prepare(`
-        SELECT COUNT(*) as count FROM SessionToken
-        WHERE actif = 1 AND date_expiration <= datetime('now')
-      `).get().count,
-      
-      revoquees: db.prepare(`
-        SELECT COUNT(*) as count FROM SessionToken
-        WHERE actif = 0
-      `).get().count,
-      
-      total: db.prepare(`
-        SELECT COUNT(*) as count FROM SessionToken
-      `).get().count,
-      
-      utilisateurs_connectes: db.prepare(`
-        SELECT COUNT(DISTINCT id_utilisateur) as count FROM SessionToken
-        WHERE actif = 1 AND date_expiration > datetime('now')
-      `).get().count
-    };
-
-    return stats;
-  } catch (error) {
-    console.error('❌ Erreur récupération stats:', error);
-    return null;
-  }
-}
-
-/**
- * Démarrer le nettoyage automatique périodique
+ * Démarre le nettoyage automatique des sessions
+ * @param {number} intervalMinutes - Intervalle en minutes entre chaque nettoyage
  */
 function startAutomaticCleanup(intervalMinutes = 60) {
-  console.log(`🚀 Démarrage du nettoyage automatique (toutes les ${intervalMinutes} minutes)`);
+  console.log(`⏰ Démarrage du nettoyage automatique (toutes les ${intervalMinutes} minutes)`);
   
-  // Nettoyage immédiat
-  cleanupExpiredSessions();
+  // Nettoyage initial au démarrage
+  cleanExpiredSessions();
   
-  // Puis nettoyage périodique
+  // Nettoyage périodique
   const intervalMs = intervalMinutes * 60 * 1000;
-  
   setInterval(() => {
-    console.log('\n⏰ Nettoyage automatique des sessions...');
-    const cleaned = cleanupExpiredSessions();
-    const deleted = deleteOldSessions(30);
-    
-    if (cleaned === 0 && deleted === 0) {
-      console.log('✅ Aucune session à nettoyer');
-    }
-    
-    const stats = getSessionStats();
-    if (stats) {
-      console.log(`📊 Sessions actives: ${stats.actives}, Utilisateurs connectés: ${stats.utilisateurs_connectes}`);
-    }
+    cleanExpiredSessions();
   }, intervalMs);
 }
 
+/**
+ * Désactive toutes les sessions d'un utilisateur
+ * @param {number} userId - ID de l'utilisateur
+ */
+async function revokeUserSessions(userId) {
+  try {
+    const result = await pool.query(`
+      UPDATE SessionToken
+      SET actif = FALSE
+      WHERE id_utilisateur = $1
+      AND actif = TRUE
+    `, [userId]);
+    
+    console.log(`🔒 ${result.rowCount} session(s) révoquée(s) pour l'utilisateur ${userId}`);
+    return result.rowCount;
+  } catch (error) {
+    console.error('❌ Erreur lors de la révocation des sessions:', error.message);
+    return 0;
+  }
+}
+
+/**
+ * Obtient le nombre de sessions actives
+ */
+async function getActiveSessionsCount() {
+  try {
+    const result = await pool.query(`
+      SELECT COUNT(*) as count
+      FROM SessionToken
+      WHERE actif = TRUE
+      AND date_expiration > NOW()
+    `);
+    
+    return parseInt(result.rows[0].count);
+  } catch (error) {
+    console.error('❌ Erreur lors du comptage des sessions:', error.message);
+    return 0;
+  }
+}
+
 module.exports = {
-  cleanupExpiredSessions,
-  deleteOldSessions,
-  getSessionStats,
-  startAutomaticCleanup
+  cleanExpiredSessions,
+  startAutomaticCleanup,
+  revokeUserSessions,
+  getActiveSessionsCount
 };
