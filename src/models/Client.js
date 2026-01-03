@@ -17,8 +17,6 @@ class Client {
         email,
         assujetti_tva,
         typec AS "TypeC",
-        total_achats,
-        creance,
         date_creation,
         date_modification
       FROM Client 
@@ -41,8 +39,6 @@ class Client {
         email,
         assujetti_tva,
         typec AS "TypeC",
-        total_achats,
-        creance,
         date_creation,
         date_modification
       FROM Client 
@@ -67,8 +63,6 @@ class Client {
         email,
         assujetti_tva,
         typec AS "TypeC",
-        total_achats,
-        creance,
         date_creation
     `, [
       data.nom,
@@ -105,8 +99,6 @@ class Client {
         email,
         assujetti_tva,
         typec AS "TypeC",
-        total_achats,
-        creance,
         date_creation,
         date_modification
     `, [
