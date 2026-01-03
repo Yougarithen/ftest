@@ -4,25 +4,70 @@ const pool = require('../database/connection');
 class MatierePremiere {
   
   static async getAll() {
-    const result = await pool.query('SELECT * FROM MatierePremiere ORDER BY nom');
+    const result = await pool.query(`
+      SELECT 
+        id_matiere,
+        nom,
+        unite,
+        typem AS "typeM",
+        stock_actuel,
+        stock_minimum,
+        prix_unitaire,
+        date_creation
+      FROM MatierePremiere 
+      ORDER BY nom
+    `);
     return result.rows;
   }
 
   static async getById(id) {
-    const result = await pool.query('SELECT * FROM MatierePremiere WHERE id_matiere = $1', [id]);
+    const result = await pool.query(`
+      SELECT 
+        id_matiere,
+        nom,
+        unite,
+        typem AS "typeM",
+        stock_actuel,
+        stock_minimum,
+        prix_unitaire,
+        date_creation
+      FROM MatierePremiere 
+      WHERE id_matiere = $1
+    `, [id]);
     return result.rows[0];
   }
 
   static async getByType(type) {
-    const result = await pool.query('SELECT * FROM MatierePremiere WHERE typeM = $1 ORDER BY nom', [type]);
+    const result = await pool.query(`
+      SELECT 
+        id_matiere,
+        nom,
+        unite,
+        typem AS "typeM",
+        stock_actuel,
+        stock_minimum,
+        prix_unitaire,
+        date_creation
+      FROM MatierePremiere 
+      WHERE typem = $1 
+      ORDER BY nom
+    `, [type]);
     return result.rows;
   }
 
   static async create(data) {
     const result = await pool.query(`
-      INSERT INTO MatierePremiere (nom, unite, typeM, stock_actuel, stock_minimum, prix_unitaire)
+      INSERT INTO MatierePremiere (nom, unite, typem, stock_actuel, stock_minimum, prix_unitaire)
       VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
+      RETURNING 
+        id_matiere,
+        nom,
+        unite,
+        typem AS "typeM",
+        stock_actuel,
+        stock_minimum,
+        prix_unitaire,
+        date_creation
     `, [
       data.nom,
       data.unite,
@@ -38,9 +83,22 @@ class MatierePremiere {
   static async update(id, data) {
     const result = await pool.query(`
       UPDATE MatierePremiere 
-      SET nom = $1, unite = $2, typeM = $3, stock_actuel = $4, stock_minimum = $5, prix_unitaire = $6
+      SET nom = $1, 
+          unite = $2, 
+          typem = $3, 
+          stock_actuel = $4, 
+          stock_minimum = $5, 
+          prix_unitaire = $6
       WHERE id_matiere = $7
-      RETURNING *
+      RETURNING 
+        id_matiere,
+        nom,
+        unite,
+        typem AS "typeM",
+        stock_actuel,
+        stock_minimum,
+        prix_unitaire,
+        date_creation
     `, [
       data.nom,
       data.unite,
@@ -67,14 +125,14 @@ class MatierePremiere {
   static async getStatsByType() {
     const result = await pool.query(`
       SELECT 
-        typeM as type,
+        typem AS "type",
         COUNT(*) as nb_matieres,
         SUM(stock_actuel) as stock_total,
         SUM(stock_actuel * COALESCE(prix_unitaire, 0)) as valeur_totale,
         SUM(CASE WHEN stock_actuel < stock_minimum THEN 1 ELSE 0 END) as nb_alertes
       FROM MatierePremiere
-      GROUP BY typeM
-      ORDER BY typeM
+      GROUP BY typem
+      ORDER BY typem
     `);
     return result.rows;
   }
@@ -85,7 +143,18 @@ class MatierePremiere {
     try {
       await client.query('BEGIN');
       
-      const matiereResult = await client.query('SELECT * FROM MatierePremiere WHERE id_matiere = $1', [id]);
+      const matiereResult = await client.query(`
+        SELECT 
+          id_matiere,
+          nom,
+          unite,
+          typem AS "typeM",
+          stock_actuel,
+          stock_minimum,
+          prix_unitaire
+        FROM MatierePremiere 
+        WHERE id_matiere = $1
+      `, [id]);
       const matiere = matiereResult.rows[0];
       
       if (!matiere) throw new Error('Matière première introuvable');
@@ -108,10 +177,20 @@ class MatierePremiere {
       ]);
 
       // Mettre à jour le stock
-      const updateResult = await client.query(
-        'UPDATE MatierePremiere SET stock_actuel = $1 WHERE id_matiere = $2 RETURNING *',
-        [nouvelleQuantite, id]
-      );
+      const updateResult = await client.query(`
+        UPDATE MatierePremiere 
+        SET stock_actuel = $1 
+        WHERE id_matiere = $2 
+        RETURNING 
+          id_matiere,
+          nom,
+          unite,
+          typem AS "typeM",
+          stock_actuel,
+          stock_minimum,
+          prix_unitaire,
+          date_creation
+      `, [nouvelleQuantite, id]);
 
       await client.query('COMMIT');
       return updateResult.rows[0];
