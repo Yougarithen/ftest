@@ -4,20 +4,72 @@ const pool = require('../database/connection');
 class Client {
   
   static async getAll() {
-    const result = await pool.query('SELECT * FROM Client ORDER BY nom');
+    const result = await pool.query(`
+      SELECT 
+        id_client,
+        nom,
+        numero_rc,
+        nif,
+        n_article,
+        adresse,
+        contact,
+        telephone,
+        email,
+        assujetti_tva,
+        typec AS "TypeC",
+        total_achats,
+        creance,
+        date_creation,
+        date_modification
+      FROM Client 
+      ORDER BY nom
+    `);
     return result.rows;
   }
 
   static async getById(id) {
-    const result = await pool.query('SELECT * FROM Client WHERE id_client = $1', [id]);
+    const result = await pool.query(`
+      SELECT 
+        id_client,
+        nom,
+        numero_rc,
+        nif,
+        n_article,
+        adresse,
+        contact,
+        telephone,
+        email,
+        assujetti_tva,
+        typec AS "TypeC",
+        total_achats,
+        creance,
+        date_creation,
+        date_modification
+      FROM Client 
+      WHERE id_client = $1
+    `, [id]);
     return result.rows[0];
   }
 
   static async create(data) {
     const result = await pool.query(`
-      INSERT INTO Client (nom, numero_rc, nif, n_article, adresse, contact, telephone, email, assujetti_tva, TypeC)
+      INSERT INTO Client (nom, numero_rc, nif, n_article, adresse, contact, telephone, email, assujetti_tva, typec)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING *
+      RETURNING 
+        id_client,
+        nom,
+        numero_rc,
+        nif,
+        n_article,
+        adresse,
+        contact,
+        telephone,
+        email,
+        assujetti_tva,
+        typec AS "TypeC",
+        total_achats,
+        creance,
+        date_creation
     `, [
       data.nom,
       data.numero_rc || null,
@@ -27,7 +79,7 @@ class Client {
       data.contact || null,
       data.telephone || null,
       data.email || null,
-      data.assujetti_tva !== undefined ? data.assujetti_tva : 1,
+      data.assujetti_tva !== undefined ? data.assujetti_tva : true,
       data.TypeC || 'Entreprise'
     ]);
     
@@ -38,9 +90,25 @@ class Client {
     const result = await pool.query(`
       UPDATE Client 
       SET nom = $1, numero_rc = $2, nif = $3, n_article = $4, adresse = $5, 
-          contact = $6, telephone = $7, email = $8, assujetti_tva = $9, TypeC = $10
+          contact = $6, telephone = $7, email = $8, assujetti_tva = $9, typec = $10,
+          date_modification = CURRENT_TIMESTAMP
       WHERE id_client = $11
-      RETURNING *
+      RETURNING 
+        id_client,
+        nom,
+        numero_rc,
+        nif,
+        n_article,
+        adresse,
+        contact,
+        telephone,
+        email,
+        assujetti_tva,
+        typec AS "TypeC",
+        total_achats,
+        creance,
+        date_creation,
+        date_modification
     `, [
       data.nom,
       data.numero_rc,
@@ -73,7 +141,12 @@ class Client {
 
   // Récupérer tous les types de clients distincts
   static async getTypes() {
-    const result = await pool.query('SELECT DISTINCT TypeC FROM Client ORDER BY TypeC');
+    const result = await pool.query(`
+      SELECT DISTINCT typec AS "TypeC" 
+      FROM Client 
+      WHERE typec IS NOT NULL
+      ORDER BY typec
+    `);
     return result.rows;
   }
 }
