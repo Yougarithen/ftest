@@ -17,8 +17,7 @@ class Client {
         email,
         assujetti_tva,
         typec AS "TypeC",
-        date_creation,
-        date_modification
+        date_creation
       FROM Client 
       ORDER BY nom
     `);
@@ -39,8 +38,7 @@ class Client {
         email,
         assujetti_tva,
         typec AS "TypeC",
-        date_creation,
-        date_modification
+        date_creation
       FROM Client 
       WHERE id_client = $1
     `, [id]);
@@ -83,9 +81,16 @@ class Client {
   static async update(id, data) {
     const result = await pool.query(`
       UPDATE Client 
-      SET nom = $1, numero_rc = $2, nif = $3, n_article = $4, adresse = $5, 
-          contact = $6, telephone = $7, email = $8, assujetti_tva = $9, typec = $10,
-          date_modification = CURRENT_TIMESTAMP
+      SET nom = $1, 
+          numero_rc = $2, 
+          nif = $3, 
+          n_article = $4, 
+          adresse = $5, 
+          contact = $6, 
+          telephone = $7, 
+          email = $8, 
+          assujetti_tva = $9, 
+          typec = $10
       WHERE id_client = $11
       RETURNING 
         id_client,
@@ -99,8 +104,7 @@ class Client {
         email,
         assujetti_tva,
         typec AS "TypeC",
-        date_creation,
-        date_modification
+        date_creation
     `, [
       data.nom,
       data.numero_rc,
