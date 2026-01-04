@@ -1,4 +1,4 @@
-// Controller pour les ajustements de stock - PostgreSQL LOL
+// Controller pour les ajustements de stock - PostgreSQL LOL test
 const AjustementStock = require('../models/AjustementStock');
 
 exports.getAll = async (req, res) => {
