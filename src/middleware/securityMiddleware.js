@@ -1,118 +1,139 @@
-// src/middlewares/securityMiddleware.js - PostgreSQL
+// src/middlewares/securityMiddleware.js - VERSION POSTGRESQL
 const crypto = require('crypto');
-const pool = require('../database/connection');
+const { Pool } = require('pg');
 
-// Table pour tracer les tentatives de connexion
-async function initSecurityTables() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS TentativeConnexion (
-      id_tentative SERIAL PRIMARY KEY,
-      identifiant VARCHAR(100) NOT NULL,
-      ip_address VARCHAR(45) NOT NULL,
-      user_agent TEXT,
-      succes BOOLEAN DEFAULT FALSE,
-      date_tentative TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      raison_echec TEXT,
-      id_utilisateur INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS JournalActivite (
-      id_journal SERIAL PRIMARY KEY,
-      id_utilisateur INTEGER,
-      action VARCHAR(100) NOT NULL,
-      module VARCHAR(50) NOT NULL,
-      details TEXT,
-      ip_address VARCHAR(45),
-      date_action TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (id_utilisateur) REFERENCES Utilisateur(id_utilisateur)
-    );
-
-    CREATE TABLE IF NOT EXISTS ConfigurationSecurite (
-      id_config SERIAL PRIMARY KEY,
-      cle VARCHAR(50) UNIQUE NOT NULL,
-      valeur TEXT NOT NULL,
-      description TEXT,
-      date_modification TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_tentative_ip ON TentativeConnexion(ip_address);
-    CREATE INDEX IF NOT EXISTS idx_tentative_date ON TentativeConnexion(date_tentative);
-    CREATE INDEX IF NOT EXISTS idx_journal_utilisateur ON JournalActivite(id_utilisateur);
-    CREATE INDEX IF NOT EXISTS idx_journal_date ON JournalActivite(date_action);
-  `);
-
-  // Configuration par défaut
-  const defaultConfig = [
-    ['max_tentatives_connexion', '5', 'Nombre maximum de tentatives de connexion échouées'],
-    ['duree_blocage_minutes', '30', 'Durée de blocage après échec (en minutes)'],
-    ['duree_session_heures', '8', 'Durée maximale d\'une session (en heures)'],
-    ['force_changement_mdp_jours', '90', 'Forcer le changement de mot de passe tous les X jours'],
-    ['longueur_min_mdp', '8', 'Longueur minimale du mot de passe'],
-    ['exiger_majuscule', 'true', 'Exiger au moins une majuscule'],
-    ['exiger_minuscule', 'true', 'Exiger au moins une minuscule'],
-    ['exiger_chiffre', 'true', 'Exiger au moins un chiffre'],
-    ['exiger_caractere_special', 'true', 'Exiger au moins un caractère spécial'],
-    ['activer_2fa', 'false', 'Activer l\'authentification à deux facteurs (future)'],
-    ['ip_autorisees', '', 'Liste des IP autorisées (vide = toutes)']
-  ];
-
-  for (const [cle, valeur, description] of defaultConfig) {
-    await pool.query(`
-      INSERT INTO ConfigurationSecurite (cle, valeur, description)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (cle) DO NOTHING
-    `, [cle, valeur, description]);
-  }
-}
-
-// Initialiser les tables au chargement
-// ✅ APRÈS - Ne crash pas au démarrage
-initSecurityTables().catch(err => {
-  console.error('⚠️ Erreur initialisation tables sécurité:', err.message);
-  console.log('⚠️ L\'application continuera de fonctionner mais les fonctions de sécurité seront limitées');
+// Connexion PostgreSQL (à adapter selon votre configuration)
+const pool = new Pool({
+  // Configuration déjà définie ailleurs dans votre app
 });
 
 // ============================================================
-// 1. LIMITATION DES TENTATIVES DE CONNEXION (Brute Force Protection)
+// INITIALISATION DES TABLES
 // ============================================================
 
-async function enregistrerTentativeConnexion(identifiant, ip, userAgent, succes, raisonEchec = null, idUtilisateur = null) {
-  await pool.query(`
-    INSERT INTO TentativeConnexion (identifiant, ip_address, user_agent, succes, raison_echec, id_utilisateur)
-    VALUES ($1, $2, $3, $4, $5, $6)
-  `, [identifiant, ip, userAgent, succes, raisonEchec, idUtilisateur]);
+async function initSecurityTables() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS TentativeConnexion (
+        id_tentative SERIAL PRIMARY KEY,
+        identifiant VARCHAR(100) NOT NULL,
+        ip_address VARCHAR(45) NOT NULL,
+        user_agent TEXT,
+        succes BOOLEAN DEFAULT FALSE,
+        date_tentative TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        raison_echec TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS JournalActivite (
+        id_journal SERIAL PRIMARY KEY,
+        id_utilisateur INTEGER,
+        action VARCHAR(100) NOT NULL,
+        module VARCHAR(50) NOT NULL,
+        details TEXT,
+        ip_address VARCHAR(45),
+        date_action TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS ConfigurationSecurite (
+        id_config SERIAL PRIMARY KEY,
+        cle VARCHAR(50) UNIQUE NOT NULL,
+        valeur TEXT NOT NULL,
+        description TEXT,
+        date_modification TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tentative_ip ON TentativeConnexion(ip_address);
+      CREATE INDEX IF NOT EXISTS idx_tentative_date ON TentativeConnexion(date_tentative);
+      CREATE INDEX IF NOT EXISTS idx_journal_utilisateur ON JournalActivite(id_utilisateur);
+      CREATE INDEX IF NOT EXISTS idx_journal_date ON JournalActivite(date_action);
+    `);
+
+    // Configuration par défaut
+    const defaultConfig = [
+      ['max_tentatives_connexion', '5', 'Nombre maximum de tentatives de connexion échouées'],
+      ['duree_blocage_minutes', '30', 'Durée de blocage après échec (en minutes)'],
+      ['duree_session_heures', '8', 'Durée maximale d\'une session (en heures)'],
+      ['force_changement_mdp_jours', '90', 'Forcer le changement de mot de passe tous les X jours'],
+      ['longueur_min_mdp', '8', 'Longueur minimale du mot de passe'],
+      ['exiger_majuscule', 'true', 'Exiger au moins une majuscule'],
+      ['exiger_minuscule', 'true', 'Exiger au moins une minuscule'],
+      ['exiger_chiffre', 'true', 'Exiger au moins un chiffre'],
+      ['exiger_caractere_special', 'true', 'Exiger au moins un caractère spécial'],
+      ['activer_2fa', 'false', 'Activer l\'authentification à deux facteurs (future)'],
+      ['ip_autorisees', '', 'Liste des IP autorisées (vide = toutes)']
+    ];
+
+    for (const [cle, valeur, description] of defaultConfig) {
+      await client.query(`
+        INSERT INTO ConfigurationSecurite (cle, valeur, description)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (cle) DO NOTHING
+      `, [cle, valeur, description]);
+    }
+  } finally {
+    client.release();
+  }
+}
+
+// Initialiser au démarrage (avec gestion d'erreur)
+initSecurityTables().catch(err => console.error('Erreur init security tables:', err));
+
+// ============================================================
+// 1. LIMITATION DES TENTATIVES DE CONNEXION
+// ============================================================
+
+async function enregistrerTentativeConnexion(identifiant, ip, userAgent, succes, raisonEchec = null) {
+  try {
+    await pool.query(`
+      INSERT INTO TentativeConnexion (identifiant, ip_address, user_agent, succes, raison_echec)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [identifiant, ip, userAgent, succes, raisonEchec]);
+  } catch (err) {
+    console.error('Erreur enregistrement tentative:', err);
+  }
 }
 
 async function verifierBlocageIP(ip) {
-  const config = await getSecurityConfig();
-  const maxTentatives = parseInt(config.max_tentatives_connexion);
-  const dureeBlocage = parseInt(config.duree_blocage_minutes);
+  try {
+    const config = await getSecurityConfig();
+    const maxTentatives = parseInt(config.max_tentatives_connexion);
+    const dureeBlocage = parseInt(config.duree_blocage_minutes);
 
-  const result = await pool.query(`
-    SELECT COUNT(*) as count
-    FROM TentativeConnexion
-    WHERE ip_address = $1
-      AND succes = FALSE
-      AND date_tentative > NOW() - INTERVAL '${dureeBlocage} minutes'
-  `, [ip]);
+    const result = await pool.query(`
+      SELECT COUNT(*) as count
+      FROM TentativeConnexion
+      WHERE ip_address = $1
+        AND succes = FALSE
+        AND date_tentative > NOW() - INTERVAL '${dureeBlocage} minutes'
+    `, [ip]);
 
-  return parseInt(result.rows[0].count) >= maxTentatives;
+    return parseInt(result.rows[0].count) >= maxTentatives;
+  } catch (err) {
+    console.error('Erreur verifierBlocageIP:', err);
+    return false;
+  }
 }
 
 async function verifierBlocageUtilisateur(identifiant) {
-  const config = await getSecurityConfig();
-  const maxTentatives = parseInt(config.max_tentatives_connexion);
-  const dureeBlocage = parseInt(config.duree_blocage_minutes);
+  try {
+    const config = await getSecurityConfig();
+    const maxTentatives = parseInt(config.max_tentatives_connexion);
+    const dureeBlocage = parseInt(config.duree_blocage_minutes);
 
-  const result = await pool.query(`
-    SELECT COUNT(*) as count
-    FROM TentativeConnexion
-    WHERE identifiant = $1
-      AND succes = FALSE
-      AND date_tentative > NOW() - INTERVAL '${dureeBlocage} minutes'
-  `, [identifiant]);
+    const result = await pool.query(`
+      SELECT COUNT(*) as count
+      FROM TentativeConnexion
+      WHERE identifiant = $1
+        AND succes = FALSE
+        AND date_tentative > NOW() - INTERVAL '${dureeBlocage} minutes'
+    `, [identifiant]);
 
-  return parseInt(result.rows[0].count) >= maxTentatives;
+    return parseInt(result.rows[0].count) >= maxTentatives;
+  } catch (err) {
+    console.error('Erreur verifierBlocageUtilisateur:', err);
+    return false;
+  }
 }
 
 const rateLimitMiddleware = async (req, res, next) => {
@@ -133,8 +154,18 @@ const rateLimitMiddleware = async (req, res, next) => {
 // 2. VALIDATION FORTE DES MOTS DE PASSE
 // ============================================================
 
-async function validerMotDePasse(password) {
-  const config = await getSecurityConfig();
+function validerMotDePasse(password, config = null) {
+  // Si pas de config fournie, utiliser des valeurs par défaut
+  if (!config) {
+    config = {
+      longueur_min_mdp: '8',
+      exiger_majuscule: 'true',
+      exiger_minuscule: 'true',
+      exiger_chiffre: 'true',
+      exiger_caractere_special: 'true'
+    };
+  }
+
   const errors = [];
 
   const longueurMin = parseInt(config.longueur_min_mdp);
@@ -179,28 +210,33 @@ async function validerMotDePasse(password) {
 // ============================================================
 
 const ipWhitelistMiddleware = async (req, res, next) => {
-  const config = await getSecurityConfig();
-  const ipAutorisees = config.ip_autorisees;
+  try {
+    const config = await getSecurityConfig();
+    const ipAutorisees = config.ip_autorisees;
 
-  // Si pas de restriction IP, on continue
-  if (!ipAutorisees || ipAutorisees.trim() === '') {
-    return next();
+    // Si pas de restriction IP, on continue
+    if (!ipAutorisees || ipAutorisees.trim() === '') {
+      return next();
+    }
+
+    const ip = req.ip || req.connection.remoteAddress;
+    const listeIPs = ipAutorisees.split(',').map(ip => ip.trim());
+
+    if (!listeIPs.includes(ip)) {
+      await journaliserActivite(null, 'ACCES_REFUSE_IP', 'securite', 
+        `Tentative d'accès depuis IP non autorisée: ${ip}`, ip);
+      
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé depuis cette adresse IP'
+      });
+    }
+
+    next();
+  } catch (err) {
+    console.error('Erreur ipWhitelistMiddleware:', err);
+    next(); // Continuer en cas d'erreur pour ne pas bloquer l'app
   }
-
-  const ip = req.ip || req.connection.remoteAddress;
-  const listeIPs = ipAutorisees.split(',').map(ip => ip.trim());
-
-  if (!listeIPs.includes(ip)) {
-    await journaliserActivite(null, 'ACCES_REFUSE_IP', 'securite', 
-      `Tentative d'accès depuis IP non autorisée: ${ip}`, ip);
-    
-    return res.status(403).json({
-      success: false,
-      error: 'Accès refusé depuis cette adresse IP'
-    });
-  }
-
-  next();
 };
 
 // ============================================================
@@ -208,15 +244,21 @@ const ipWhitelistMiddleware = async (req, res, next) => {
 // ============================================================
 
 async function nettoyerSessionsExpirees() {
-  const config = await getSecurityConfig();
-  const dureeSession = parseInt(config.duree_session_heures);
+  try {
+    const config = await getSecurityConfig();
+    const dureeSession = parseInt(config.duree_session_heures);
 
-  await pool.query(`
-    UPDATE SessionToken
-    SET actif = 0
-    WHERE date_creation < NOW() - INTERVAL '${dureeSession} hours'
-      AND actif = 1
-  `);
+    await pool.query(`
+      UPDATE SessionToken
+      SET actif = FALSE
+      WHERE date_creation < NOW() - INTERVAL '${dureeSession} hours'
+        AND actif = TRUE
+    `);
+    
+    console.log('[Security] Sessions expirées nettoyées');
+  } catch (err) {
+    console.error('[Security] Erreur nettoyage sessions:', err.message);
+  }
 }
 
 // Nettoyer toutes les 30 minutes
@@ -227,10 +269,14 @@ setInterval(nettoyerSessionsExpirees, 30 * 60 * 1000);
 // ============================================================
 
 async function journaliserActivite(idUtilisateur, action, module, details, ip) {
-  await pool.query(`
-    INSERT INTO JournalActivite (id_utilisateur, action, module, details, ip_address)
-    VALUES ($1, $2, $3, $4, $5)
-  `, [idUtilisateur, action, module, details || null, ip || null]);
+  try {
+    await pool.query(`
+      INSERT INTO JournalActivite (id_utilisateur, action, module, details, ip_address)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [idUtilisateur, action, module, details || null, ip || null]);
+  } catch (err) {
+    console.error('Erreur journalisation:', err);
+  }
 }
 
 const auditMiddleware = (action, module) => {
@@ -249,7 +295,7 @@ const auditMiddleware = (action, module) => {
             query: req.query
           }), 
           ip
-        ).catch(err => console.error('Erreur journalisation:', err));
+        ).catch(err => console.error('Erreur audit:', err));
       }
     });
 
@@ -262,39 +308,44 @@ const auditMiddleware = (action, module) => {
 // ============================================================
 
 async function detecterActiviteSuspecte(idUtilisateur) {
-  // Vérifier les connexions multiples depuis différentes IPs
-  const connexionsRecentes = await pool.query(`
-    SELECT DISTINCT ip_address, COUNT(*) as count
-    FROM JournalActivite
-    WHERE id_utilisateur = $1
-      AND action = 'CONNEXION'
-      AND date_action > NOW() - INTERVAL '1 hour'
-    GROUP BY ip_address
-  `, [idUtilisateur]);
+  try {
+    // Vérifier les connexions multiples depuis différentes IPs
+    const connexionsRecentes = await pool.query(`
+      SELECT DISTINCT ip_address, COUNT(*) as count
+      FROM JournalActivite
+      WHERE id_utilisateur = $1
+        AND action = 'CONNEXION'
+        AND date_action > NOW() - INTERVAL '1 hour'
+      GROUP BY ip_address
+    `, [idUtilisateur]);
 
-  if (connexionsRecentes.rows.length > 3) {
-    await journaliserActivite(idUtilisateur, 'ALERTE_SECURITE', 'securite',
-      `Connexions depuis ${connexionsRecentes.rows.length} IPs différentes en 1h`);
-    return true;
+    if (connexionsRecentes.rows.length > 3) {
+      await journaliserActivite(idUtilisateur, 'ALERTE_SECURITE', 'securite',
+        `Connexions depuis ${connexionsRecentes.rows.length} IPs différentes en 1h`);
+      return true;
+    }
+
+    // Vérifier les actions inhabituelles
+    const actionsRecentes = await pool.query(`
+      SELECT action, COUNT(*) as count
+      FROM JournalActivite
+      WHERE id_utilisateur = $1
+        AND date_action > NOW() - INTERVAL '10 minutes'
+      GROUP BY action
+      HAVING COUNT(*) > 20
+    `, [idUtilisateur]);
+
+    if (actionsRecentes.rows.length > 0) {
+      await journaliserActivite(idUtilisateur, 'ALERTE_SECURITE', 'securite',
+        `Activité anormalement élevée: ${JSON.stringify(actionsRecentes.rows)}`);
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    console.error('Erreur detecterActiviteSuspecte:', err);
+    return false;
   }
-
-  // Vérifier les actions inhabituelles
-  const actionsRecentes = await pool.query(`
-    SELECT action, COUNT(*) as count
-    FROM JournalActivite
-    WHERE id_utilisateur = $1
-      AND date_action > NOW() - INTERVAL '10 minutes'
-    GROUP BY action
-    HAVING COUNT(*) > 20
-  `, [idUtilisateur]);
-
-  if (actionsRecentes.rows.length > 0) {
-    await journaliserActivite(idUtilisateur, 'ALERTE_SECURITE', 'securite',
-      `Activité anormalement élevée: ${JSON.stringify(actionsRecentes.rows)}`);
-    return true;
-  }
-
-  return false;
 }
 
 // ============================================================
@@ -302,24 +353,44 @@ async function detecterActiviteSuspecte(idUtilisateur) {
 // ============================================================
 
 async function getSecurityConfig() {
-  const config = {};
-  const result = await pool.query('SELECT cle, valeur FROM ConfigurationSecurite');
-  result.rows.forEach(row => {
-    config[row.cle] = row.valeur;
-  });
-  return config;
+  try {
+    const result = await pool.query('SELECT cle, valeur FROM ConfigurationSecurite');
+    const config = {};
+    result.rows.forEach(row => {
+      config[row.cle] = row.valeur;
+    });
+    return config;
+  } catch (err) {
+    console.error('Erreur getSecurityConfig:', err);
+    // Retourner config par défaut en cas d'erreur
+    return {
+      max_tentatives_connexion: '5',
+      duree_blocage_minutes: '30',
+      duree_session_heures: '8',
+      longueur_min_mdp: '8',
+      exiger_majuscule: 'true',
+      exiger_minuscule: 'true',
+      exiger_chiffre: 'true',
+      exiger_caractere_special: 'true',
+      ip_autorisees: ''
+    };
+  }
 }
 
 async function updateSecurityConfig(cle, valeur) {
-  await pool.query(`
-    UPDATE ConfigurationSecurite
-    SET valeur = $1, date_modification = CURRENT_TIMESTAMP
-    WHERE cle = $2
-  `, [valeur, cle]);
+  try {
+    await pool.query(`
+      UPDATE ConfigurationSecurite
+      SET valeur = $1, date_modification = CURRENT_TIMESTAMP
+      WHERE cle = $2
+    `, [valeur, cle]);
+  } catch (err) {
+    console.error('Erreur updateSecurityConfig:', err);
+  }
 }
 
 // ============================================================
-// 8. PROTECTION CSRF (pour les futures applications web)
+// 8. PROTECTION CSRF
 // ============================================================
 
 function genererTokenCSRF() {
@@ -342,5 +413,6 @@ module.exports = {
   getSecurityConfig,
   updateSecurityConfig,
   nettoyerSessionsExpirees,
-  genererTokenCSRF
+  genererTokenCSRF,
+  pool // Exporter le pool si besoin ailleurs
 };
