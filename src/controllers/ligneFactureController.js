@@ -1,4 +1,4 @@
-// Controller lignes facture - PostgreSQL
+// Controller lignes facture - PostgreSQL LL
 const LigneFacture = require('../models/LigneFacture');
 
 exports.getAll = async (req, res) => {

@@ -1,4 +1,4 @@
-// Controller matières premières - PostgreSQL
+// Controller matières premières - PostgreSQL LOL
 const MatierePremiere = require('../models/MatierePremiere');
 
 exports.getAll = async (req, res) => {
