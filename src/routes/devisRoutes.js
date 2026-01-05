@@ -14,5 +14,5 @@ router.put('/:id', requirePermission('devis.update'), controller.update);
 router.delete('/:id', requirePermission('devis.delete'), controller.delete);
 router.post('/:id/lignes', requirePermission('devis.update'), controller.ajouterLigne);
 router.post('/:id/convertir', requirePermission('devis.validate', 'factures.create'), controller.convertirEnFacture);
-router.post('/:id/valider', devisController.validerDevis);
+router.post('/:id/valider', Controller.validerDevis);
 module.exports = router;
