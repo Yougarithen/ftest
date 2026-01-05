@@ -38,8 +38,7 @@
               "RelativeToolTip": "src\\controllers\\ligneDevisController.js",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2026-01-04T14:29:00.115Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-01-04T14:29:00.115Z"
             },
             {
               "$type": "Document",
@@ -51,8 +50,7 @@
               "RelativeToolTip": "src\\controllers\\ligneFactureController.js",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAsAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2026-01-04T14:28:58.583Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-01-04T14:28:58.583Z"
             },
             {
               "$type": "Document",
@@ -77,8 +75,7 @@
               "RelativeToolTip": "src\\database\\connection.js",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2026-01-04T14:28:35.143Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-01-04T14:28:35.143Z"
             }
           ]
         }
