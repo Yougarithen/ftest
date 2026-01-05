@@ -18,6 +18,7 @@ const ligneDevisRoutes = require('./ligneDevisRoutes');
 const ligneFactureRoutes = require('./ligneFactureRoutes');
 const inventaireMatiereRoutes = require('./inventaireMatiereRoutes');
 const inventaireProduitRoutes = require('./inventaireProduitRoutes');
+const ravitaillementRoutes = require('./ravitaillementRoutes');
 
 // Importer les routes d'authentification et de sécurité
 const authRoutes = require('./authRoutes');
@@ -83,6 +84,8 @@ router.use('/inventaire-matieres', inventaireMatiereRoutes);
 // Inventaire produits
 router.use('/inventaire-produits', inventaireProduitRoutes);
 
+// Ravitaillements
+router.use('/ravitaillements', ravitaillementRoutes);
 // ============================================================
 // ROUTE DE DOCUMENTATION
 // ============================================================

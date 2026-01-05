@@ -2,61 +2,61 @@
 const pool = require('../database/connection');
 
 class Ravitaillement {
-  
-  static async getAll() {
-    const result = await pool.query(`
+
+    static async getAll() {
+        const result = await pool.query(`
       SELECT * FROM Vue_Historique_Ravitaillement
       ORDER BY date_ravitaillement DESC
     `);
-    return result.rows;
-  }
+        return result.rows;
+    }
 
-  static async getById(id) {
-    const result = await pool.query(`
+    static async getById(id) {
+        const result = await pool.query(`
       SELECT * FROM Vue_Historique_Ravitaillement
       WHERE id_ravitaillement = $1
     `, [id]);
-    return result.rows[0];
-  }
+        return result.rows[0];
+    }
 
-  static async getByMatiere(idMatiere) {
-    const result = await pool.query(`
+    static async getByMatiere(idMatiere) {
+        const result = await pool.query(`
       SELECT * FROM Vue_Historique_Ravitaillement
       WHERE id_matiere = $1
       ORDER BY date_ravitaillement DESC
     `, [idMatiere]);
-    return result.rows;
-  }
+        return result.rows;
+    }
 
-  static async getByPeriode(dateDebut, dateFin) {
-    const result = await pool.query(`
+    static async getByPeriode(dateDebut, dateFin) {
+        const result = await pool.query(`
       SELECT * FROM Vue_Historique_Ravitaillement
       WHERE date_ravitaillement BETWEEN $1 AND $2
       ORDER BY date_ravitaillement DESC
     `, [dateDebut, dateFin]);
-    return result.rows;
-  }
+        return result.rows;
+    }
 
-  static async create(data) {
-    const client = await pool.connect();
-    
-    try {
-      await client.query('BEGIN');
+    static async create(data) {
+        const client = await pool.connect();
 
-      // Vérifier que la matière première existe
-      const matiereResult = await client.query(
-        'SELECT id_matiere, nom, stock_actuel FROM MatierePremiere WHERE id_matiere = $1',
-        [data.id_matiere]
-      );
+        try {
+            await client.query('BEGIN');
 
-      if (matiereResult.rows.length === 0) {
-        throw new Error('Matière première introuvable');
-      }
+            // Vérifier que la matière première existe
+            const matiereResult = await client.query(
+                'SELECT id_matiere, nom, stock_actuel FROM MatierePremiere WHERE id_matiere = $1',
+                [data.id_matiere]
+            );
 
-      const matiere = matiereResult.rows[0];
+            if (matiereResult.rows.length === 0) {
+                throw new Error('Matière première introuvable');
+            }
 
-      // Insérer le ravitaillement
-      const ravitaillementResult = await client.query(`
+            const matiere = matiereResult.rows[0];
+
+            // Insérer le ravitaillement
+            const ravitaillementResult = await client.query(`
         INSERT INTO Ravitaillement (
           id_matiere, 
           quantite, 
@@ -78,28 +78,28 @@ class Ravitaillement {
           responsable,
           date_ravitaillement
       `, [
-        data.id_matiere,
-        data.quantite,
-        data.prix_achat || null,
-        data.fournisseur || null,
-        data.numero_bon_livraison || null,
-        data.commentaire || null,
-        data.responsable
-      ]);
+                data.id_matiere,
+                data.quantite,
+                data.prix_achat || null,
+                data.fournisseur || null,
+                data.numero_bon_livraison || null,
+                data.commentaire || null,
+                data.responsable
+            ]);
 
-      const ravitaillement = ravitaillementResult.rows[0];
+            const ravitaillement = ravitaillementResult.rows[0];
 
-      // Mettre à jour le stock de la matière première
-      const nouveauStock = parseFloat(matiere.stock_actuel) + parseFloat(data.quantite);
-      
-      await client.query(`
+            // Mettre à jour le stock de la matière première
+            const nouveauStock = parseFloat(matiere.stock_actuel) + parseFloat(data.quantite);
+
+            await client.query(`
         UPDATE MatierePremiere 
         SET stock_actuel = $1 
         WHERE id_matiere = $2
       `, [nouveauStock, data.id_matiere]);
 
-      // Enregistrer dans l'historique des ajustements
-      await client.query(`
+            // Enregistrer dans l'historique des ajustements
+            await client.query(`
         INSERT INTO AjustementStock (
           type_article, 
           id_article, 
@@ -112,91 +112,91 @@ class Ravitaillement {
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `, [
-        'MATIERE',
-        data.id_matiere,
-        'AJOUT',
-        matiere.stock_actuel,
-        data.quantite,
-        nouveauStock,
-        data.responsable,
-        `Ravitaillement ${data.fournisseur ? 'de ' + data.fournisseur : ''} - ${data.commentaire || 'Aucun commentaire'}`
-      ]);
+                'MATIERE',
+                data.id_matiere,
+                'AJOUT',
+                matiere.stock_actuel,
+                data.quantite,
+                nouveauStock,
+                data.responsable,
+                `Ravitaillement ${data.fournisseur ? 'de ' + data.fournisseur : ''} - ${data.commentaire || 'Aucun commentaire'}`
+            ]);
 
-      await client.query('COMMIT');
+            await client.query('COMMIT');
 
-      // Retourner les détails complets
-      const result = await pool.query(`
+            // Retourner les détails complets
+            const result = await pool.query(`
         SELECT * FROM Vue_Historique_Ravitaillement
         WHERE id_ravitaillement = $1
       `, [ravitaillement.id_ravitaillement]);
 
-      return result.rows[0];
-      
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+            return result.rows[0];
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
     }
-  }
 
-  static async delete(id) {
-    const client = await pool.connect();
-    
-    try {
-      await client.query('BEGIN');
+    static async delete(id) {
+        const client = await pool.connect();
 
-      // Récupérer les détails du ravitaillement avant suppression
-      const ravitaillementResult = await client.query(
-        'SELECT * FROM Ravitaillement WHERE id_ravitaillement = $1',
-        [id]
-      );
+        try {
+            await client.query('BEGIN');
 
-      if (ravitaillementResult.rows.length === 0) {
-        throw new Error('Ravitaillement introuvable');
-      }
+            // Récupérer les détails du ravitaillement avant suppression
+            const ravitaillementResult = await client.query(
+                'SELECT * FROM Ravitaillement WHERE id_ravitaillement = $1',
+                [id]
+            );
 
-      const ravitaillement = ravitaillementResult.rows[0];
+            if (ravitaillementResult.rows.length === 0) {
+                throw new Error('Ravitaillement introuvable');
+            }
 
-      // Récupérer le stock actuel de la matière
-      const matiereResult = await client.query(
-        'SELECT stock_actuel FROM MatierePremiere WHERE id_matiere = $1',
-        [ravitaillement.id_matiere]
-      );
+            const ravitaillement = ravitaillementResult.rows[0];
 
-      if (matiereResult.rows.length === 0) {
-        throw new Error('Matière première introuvable');
-      }
+            // Récupérer le stock actuel de la matière
+            const matiereResult = await client.query(
+                'SELECT stock_actuel FROM MatierePremiere WHERE id_matiere = $1',
+                [ravitaillement.id_matiere]
+            );
 
-      const stockActuel = parseFloat(matiereResult.rows[0].stock_actuel);
-      const nouveauStock = stockActuel - parseFloat(ravitaillement.quantite);
+            if (matiereResult.rows.length === 0) {
+                throw new Error('Matière première introuvable');
+            }
 
-      if (nouveauStock < 0) {
-        throw new Error('Impossible de supprimer ce ravitaillement : le stock deviendrait négatif');
-      }
+            const stockActuel = parseFloat(matiereResult.rows[0].stock_actuel);
+            const nouveauStock = stockActuel - parseFloat(ravitaillement.quantite);
 
-      // Mettre à jour le stock
-      await client.query(
-        'UPDATE MatierePremiere SET stock_actuel = $1 WHERE id_matiere = $2',
-        [nouveauStock, ravitaillement.id_matiere]
-      );
+            if (nouveauStock < 0) {
+                throw new Error('Impossible de supprimer ce ravitaillement : le stock deviendrait négatif');
+            }
 
-      // Supprimer le ravitaillement
-      await client.query('DELETE FROM Ravitaillement WHERE id_ravitaillement = $1', [id]);
+            // Mettre à jour le stock
+            await client.query(
+                'UPDATE MatierePremiere SET stock_actuel = $1 WHERE id_matiere = $2',
+                [nouveauStock, ravitaillement.id_matiere]
+            );
 
-      await client.query('COMMIT');
-      return { deleted: true, quantite_retrait: ravitaillement.quantite };
-      
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+            // Supprimer le ravitaillement
+            await client.query('DELETE FROM Ravitaillement WHERE id_ravitaillement = $1', [id]);
+
+            await client.query('COMMIT');
+            return { deleted: true, quantite_retrait: ravitaillement.quantite };
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
     }
-  }
 
-  static async getStats() {
-    const result = await pool.query(`
+    static async getStats() {
+        const result = await pool.query(`
       SELECT 
         COUNT(*) as total_ravitaillements,
         SUM(quantite) as quantite_totale,
@@ -205,11 +205,11 @@ class Ravitaillement {
         COUNT(DISTINCT fournisseur) as nombre_fournisseurs
       FROM Ravitaillement
     `);
-    return result.rows[0];
-  }
+        return result.rows[0];
+    }
 
-  static async getStatsByMatiere() {
-    const result = await pool.query(`
+    static async getStatsByMatiere() {
+        const result = await pool.query(`
       SELECT 
         m.id_matiere,
         m.nom as nom_matiere,
@@ -225,8 +225,8 @@ class Ravitaillement {
       HAVING COUNT(r.id_ravitaillement) > 0
       ORDER BY COUNT(r.id_ravitaillement) DESC
     `);
-    return result.rows;
-  }
+        return result.rows;
+    }
 }
 
 module.exports = Ravitaillement;
