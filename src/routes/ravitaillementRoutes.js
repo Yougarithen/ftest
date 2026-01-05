@@ -7,8 +7,7 @@ const { authenticate, requirePermission } = require('../middleware/authMiddlewar
 // Toutes les routes nécessitent l'authentification
 router.use(authenticate);
 
-// GET - Liste tous les ravitaillements
-router.get('/', requirePermission('matieres.read'), controller.getAll);
+// ⚠️ IMPORTANT: Routes spécifiques AVANT routes avec paramètres dynamiques
 
 // GET - Statistiques globales
 router.get('/stats', requirePermission('matieres.read'), controller.getStats);
@@ -22,7 +21,10 @@ router.get('/periode', requirePermission('matieres.read'), controller.getByPerio
 // GET - Ravitaillements d'une matière spécifique
 router.get('/matiere/:idMatiere', requirePermission('matieres.read'), controller.getByMatiere);
 
-// GET - Détails d'un ravitaillement
+// GET - Liste tous les ravitaillements
+router.get('/', requirePermission('matieres.read'), controller.getAll);
+
+// GET - Détails d'un ravitaillement (DOIT être en dernier des GET)
 router.get('/:id', requirePermission('matieres.read'), controller.getById);
 
 // POST - Créer un nouveau ravitaillement
