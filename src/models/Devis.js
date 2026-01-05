@@ -8,21 +8,32 @@ class Devis {
         const result = await pool.query(`
       SELECT 
         v.*,
-        d.notes
+        d.notes,
+        d.id_client as devis_id_client
       FROM Vue_DevisTotaux v
       INNER JOIN Devis d ON v.id_devis = d.id_devis
       ORDER BY v.date_devis DESC
     `);
-        return result.rows;
+
+        // S'assurer que id_client est présent pour chaque devis
+        const devis = result.rows.map(d => {
+            if (!d.id_client && d.devis_id_client) {
+                d.id_client = d.devis_id_client;
+            }
+            return d;
+        });
+
+        return devis;
     }
 
     // VERSION OPTIMISÉE : Récupère tout en une seule requête
     static async getById(id) {
-        // Récupérer les données de la vue + notes en un seul JOIN
+        // Récupérer les données de la vue + notes + id_client en un seul JOIN
         const devisResult = await pool.query(`
       SELECT 
         v.*,
-        d.notes
+        d.notes,
+        d.id_client as devis_id_client
       FROM Vue_DevisTotaux v
       INNER JOIN Devis d ON v.id_devis = d.id_devis
       WHERE v.id_devis = $1
@@ -31,6 +42,11 @@ class Devis {
         const devis = devisResult.rows[0];
 
         if (!devis) return null;
+
+        // S'assurer que id_client est présent (de la vue ou de la table)
+        if (!devis.id_client && devis.devis_id_client) {
+            devis.id_client = devis.devis_id_client;
+        }
 
         // Récupérer les lignes du devis
         const lignesResult = await pool.query('SELECT * FROM LigneDevis WHERE id_devis = $1', [id]);
