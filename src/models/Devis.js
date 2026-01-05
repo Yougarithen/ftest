@@ -69,20 +69,35 @@ class Devis {
     }
 
     static async update(id, data) {
+        // Récupérer les données actuelles pour préserver les champs non modifiés
+        const currentDevis = await pool.query('SELECT * FROM Devis WHERE id_devis = $1', [id]);
+        if (currentDevis.rows.length === 0) {
+            throw new Error('Devis introuvable');
+        }
+
+        const current = currentDevis.rows[0];
+
+        // Utiliser les valeurs actuelles si les nouvelles ne sont pas fournies
         const result = await pool.query(`
       UPDATE Devis 
-      SET id_client = $1, date_devis = $2, date_validite = $3, statut = $4, 
-          remise_globale = $5, conditions_paiement = $6, notes = $7, date_modification = CURRENT_TIMESTAMP
+      SET id_client = $1, 
+          date_devis = $2, 
+          date_validite = $3, 
+          statut = $4, 
+          remise_globale = $5, 
+          conditions_paiement = $6, 
+          notes = $7, 
+          date_modification = CURRENT_TIMESTAMP
       WHERE id_devis = $8
       RETURNING *
     `, [
-            data.id_client,
-            data.date_devis,
-            data.date_validite,
-            data.statut,
-            data.remise_globale,
-            data.conditions_paiement,
-            data.notes,
+            data.id_client ?? current.id_client,
+            data.date_devis ?? current.date_devis,
+            data.date_validite ?? current.date_validite,
+            data.statut ?? current.statut,
+            data.remise_globale ?? current.remise_globale,
+            data.conditions_paiement ?? current.conditions_paiement,
+            data.notes ?? current.notes,
             id
         ]);
 
