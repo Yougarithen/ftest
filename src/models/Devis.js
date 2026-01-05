@@ -1,37 +1,36 @@
-// Model pour les devis - PostgreSQL
+// Model pour les devis - PostgreSQL (VERSION OPTIMISÉE)
 const pool = require('../database/connection');
 
 class Devis {
 
+    // VERSION OPTIMISÉE : Utilise un JOIN au lieu de requêtes multiples
     static async getAll() {
-        // Récupérer les devis avec les totaux calculés depuis la vue
-        const result = await pool.query('SELECT * FROM Vue_DevisTotaux ORDER BY date_devis DESC');
-        const devis = result.rows;
-
-        // Récupérer les notes depuis la table Devis pour chaque devis
-        // (car la vue ne contient pas le champ notes)
-        for (let d of devis) {
-            const notesResult = await pool.query('SELECT notes FROM Devis WHERE id_devis = $1', [d.id_devis]);
-            if (notesResult.rows[0]) {
-                d.notes = notesResult.rows[0].notes;
-            }
-        }
-
-        return devis;
+        const result = await pool.query(`
+      SELECT 
+        v.*,
+        d.notes
+      FROM Vue_DevisTotaux v
+      INNER JOIN Devis d ON v.id_devis = d.id_devis
+      ORDER BY v.date_devis DESC
+    `);
+        return result.rows;
     }
 
+    // VERSION OPTIMISÉE : Récupère tout en une seule requête
     static async getById(id) {
-        // Récupérer les données de la vue (totaux calculés)
-        const devisResult = await pool.query('SELECT * FROM Vue_DevisTotaux WHERE id_devis = $1', [id]);
+        // Récupérer les données de la vue + notes en un seul JOIN
+        const devisResult = await pool.query(`
+      SELECT 
+        v.*,
+        d.notes
+      FROM Vue_DevisTotaux v
+      INNER JOIN Devis d ON v.id_devis = d.id_devis
+      WHERE v.id_devis = $1
+    `, [id]);
+
         const devis = devisResult.rows[0];
 
         if (!devis) return null;
-
-        // IMPORTANT : Récupérer le champ notes depuis la table Devis (car absent de la vue)
-        const notesResult = await pool.query('SELECT notes FROM Devis WHERE id_devis = $1', [id]);
-        if (notesResult.rows[0]) {
-            devis.notes = notesResult.rows[0].notes;
-        }
 
         // Récupérer les lignes du devis
         const lignesResult = await pool.query('SELECT * FROM LigneDevis WHERE id_devis = $1', [id]);
