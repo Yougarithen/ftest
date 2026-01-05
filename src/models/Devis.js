@@ -199,6 +199,60 @@ class Devis {
             client.release();
         }
     }
+
+    // Valider un devis et créer un bon de livraison
+    static async validerDevis(id_devis) {
+        const devis = await this.getById(id_devis);
+        if (!devis) throw new Error('Devis introuvable');
+        if (devis.statut === 'Validé') throw new Error('Le devis est déjà validé');
+
+        const Facture = require('./Facture');
+
+        const client = await pool.connect();
+
+        try {
+            await client.query('BEGIN');
+
+            // Créer un bon de livraison (type_facture = 'BON_LIVRAISON')
+            const facture = await Facture.create({
+                id_client: devis.id_client,
+                id_devis: id_devis,
+                type_facture: 'BON_LIVRAISON',
+                statut: 'Brouillon',
+                remise_globale: devis.remise_globale,
+                conditions_paiement: devis.conditions_paiement,
+                notes: devis.notes
+            });
+
+            // Copier les lignes du devis vers le bon de livraison
+            for (const ligne of devis.lignes) {
+                await Facture.ajouterLigne(facture.id_facture, {
+                    id_produit: ligne.id_produit,
+                    quantite: ligne.quantite,
+                    unite_vente: ligne.unite_vente,
+                    prix_unitaire_ht: ligne.prix_unitaire_ht,
+                    taux_tva: ligne.taux_tva,
+                    remise_ligne: ligne.remise_ligne,
+                    description: ligne.description
+                });
+            }
+
+            // Mettre à jour le devis : statut = 'Validé' et lier le bon de livraison
+            await client.query(
+                'UPDATE Devis SET statut = $1, id_facture = $2 WHERE id_devis = $3',
+                ['Validé', facture.id_facture, id_devis]
+            );
+
+            await client.query('COMMIT');
+            return Facture.getById(facture.id_facture);
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
 }
 
 module.exports = Devis;

@@ -67,3 +67,18 @@ exports.convertirEnFacture = async (req, res) => {
     res.status(400).json({ success: false, error: error.message });
   }
 };
+
+// À ajouter dans devisController.js
+
+exports.validerDevis = async (req, res) => {
+    try {
+        const bonLivraison = await Devis.validerDevis(req.params.id);
+        res.json({
+            success: true,
+            data: bonLivraison,
+            message: 'Devis validé et bon de livraison créé avec succès'
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, error: error.message });
+    }
+};
