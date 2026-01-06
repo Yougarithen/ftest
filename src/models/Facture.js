@@ -96,39 +96,80 @@ class Facture {
     }
 
     static async create(data) {
-        // ✅ MODIFIÉ: Utiliser le numéro fourni par le frontend, sinon générer un fallback
-        let numeroFacture = data.numero_facture;
+        const client = await pool.connect();
 
-        if (!numeroFacture) {
-            // Fallback: générer un numéro simple si le frontend n'en fournit pas
-            const lastFactureResult = await pool.query('SELECT numero_facture FROM Facture ORDER BY id_facture DESC LIMIT 1');
-            const lastFacture = lastFactureResult.rows[0];
-            numeroFacture = 'FAC-001';
+        try {
+            await client.query('BEGIN');
 
-            if (lastFacture) {
-                const lastNum = parseInt(lastFacture.numero_facture.split('-')[1]);
-                numeroFacture = `FAC-${String(lastNum + 1).padStart(3, '0')}`;
+            // Générer le numéro de facture (utiliser celui fourni ou en générer un nouveau)
+            let numeroFacture = data.numero_facture;
+
+            if (!numeroFacture) {
+                const typeFacture = data.type_facture || 'FACTURE';
+                const dateFacture = data.date_facture ? new Date(data.date_facture) : new Date();
+
+                // Déterminer le préfixe selon le type
+                let prefixeType = 'FACT';
+                if (typeFacture === 'BON_LIVRAISON') {
+                    prefixeType = 'BL';
+                } else if (typeFacture === 'AVOIR') {
+                    prefixeType = 'AVOIR';
+                } else if (typeFacture === 'PROFORMA') {
+                    prefixeType = 'PRO';
+                }
+
+                const annee = dateFacture.getFullYear().toString().slice(-2);
+                const mois = (dateFacture.getMonth() + 1).toString().padStart(2, '0');
+                const jour = dateFacture.getDate().toString().padStart(2, '0');
+                const prefixe = `${prefixeType}-${annee}${mois}${jour}`;
+
+                // Verrouiller la table pour éviter les doublons
+                const lastResult = await client.query(`
+                    SELECT numero_facture 
+                    FROM Facture 
+                    WHERE numero_facture LIKE $1 
+                    ORDER BY numero_facture DESC 
+                    LIMIT 1
+                    FOR UPDATE
+                `, [`${prefixe}%`]);
+
+                let serie = 1;
+                if (lastResult.rows.length > 0) {
+                    const match = lastResult.rows[0].numero_facture.match(/-(\d+)$/);
+                    if (match) {
+                        serie = parseInt(match[1], 10) + 1;
+                    }
+                }
+
+                numeroFacture = `${prefixe}-${serie.toString().padStart(3, '0')}`;
             }
+
+            const result = await client.query(`
+                INSERT INTO Facture (numero_facture, id_client, id_devis, date_facture, date_echeance, statut, type_facture, remise_globale, conditions_paiement, notes)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                RETURNING *
+            `, [
+                numeroFacture,
+                data.id_client,
+                data.id_devis || null,
+                data.date_facture || new Date().toISOString().split('T')[0],
+                data.date_echeance || null,
+                data.statut || 'Brouillon',
+                data.type_facture || 'FACTURE',
+                data.remise_globale || 0,
+                data.conditions_paiement || null,
+                data.notes || null
+            ]);
+
+            await client.query('COMMIT');
+            return this.getById(result.rows[0].id_facture);
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
         }
-
-        const result = await pool.query(`
-      INSERT INTO Facture (numero_facture, id_client, id_devis, date_facture, date_echeance, statut, type_facture, remise_globale, conditions_paiement, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING *
-    `, [
-            numeroFacture,
-            data.id_client,
-            data.id_devis || null,
-            data.date_facture || new Date().toISOString().split('T')[0],
-            data.date_echeance || null,
-            data.statut || 'Brouillon',
-            data.type_facture || 'STANDARD',
-            data.remise_globale || 0,
-            data.conditions_paiement || null,
-            data.notes || null
-        ]);
-
-        return this.getById(result.rows[0].id_facture);
     }
 
     static async update(id, data) {
@@ -197,8 +238,6 @@ class Facture {
         return result.rows;
     }
 
-    // --- TOUTES CES MÉTHODES DOIVENT ÊTRE À L'INTÉRIEUR DE LA CLASSE ---
-
     static async getBonsLivraisonNonFactures(id_client) {
         const result = await pool.query(`
             SELECT 
@@ -226,27 +265,43 @@ class Facture {
     }
 
     static async creerFactureDepuisBons(data) {
-        await pool.query('BEGIN');
+        const client = await pool.connect();
 
         try {
-            // ✅ MODIFIÉ: Utiliser le numéro fourni par le frontend, sinon générer un fallback
+            await client.query('BEGIN');
+
+            // Générer le numéro de facture
             let numeroFacture = data.numero_facture;
 
             if (!numeroFacture) {
-                // Fallback: générer un numéro simple si le frontend n'en fournit pas
-                const lastFactureResult = await pool.query(
-                    "SELECT numero_facture FROM Facture WHERE type_facture = 'FACTURE' ORDER BY id_facture DESC LIMIT 1"
-                );
-                const lastFacture = lastFactureResult.rows[0];
-                numeroFacture = 'FAC-001';
+                const dateFacture = data.date_facture ? new Date(data.date_facture) : new Date();
+                const annee = dateFacture.getFullYear().toString().slice(-2);
+                const mois = (dateFacture.getMonth() + 1).toString().padStart(2, '0');
+                const jour = dateFacture.getDate().toString().padStart(2, '0');
+                const prefixe = `FACT-${annee}${mois}${jour}`;
 
-                if (lastFacture) {
-                    const lastNum = parseInt(lastFacture.numero_facture.split('-')[1]);
-                    numeroFacture = `FAC-${String(lastNum + 1).padStart(3, '0')}`;
+                // Verrouiller pour éviter les doublons
+                const lastResult = await client.query(`
+                    SELECT numero_facture 
+                    FROM Facture 
+                    WHERE numero_facture LIKE $1 
+                    ORDER BY numero_facture DESC 
+                    LIMIT 1
+                    FOR UPDATE
+                `, [`${prefixe}%`]);
+
+                let serie = 1;
+                if (lastResult.rows.length > 0) {
+                    const match = lastResult.rows[0].numero_facture.match(/-(\d+)$/);
+                    if (match) {
+                        serie = parseInt(match[1], 10) + 1;
+                    }
                 }
+
+                numeroFacture = `${prefixe}-${serie.toString().padStart(3, '0')}`;
             }
 
-            const factureResult = await pool.query(`
+            const factureResult = await client.query(`
                 INSERT INTO Facture (
                     numero_facture, id_client, date_facture, date_echeance, 
                     statut, type_facture, remise_globale, conditions_paiement, notes
@@ -268,7 +323,7 @@ class Facture {
             const id_facture = factureResult.rows[0].id_facture;
 
             for (const id_bon of data.id_bons_livraison) {
-                await pool.query(`
+                await client.query(`
                     INSERT INTO LigneFacture (
                         id_facture, id_produit, quantite, unite_vente, 
                         prix_unitaire_ht, taux_tva, remise_ligne, description
@@ -283,18 +338,20 @@ class Facture {
                 await BonLivraisonFacture.create(id_bon, id_facture);
             }
 
-            await pool.query('COMMIT');
+            await client.query('COMMIT');
             return this.getById(id_facture);
 
         } catch (error) {
-            await pool.query('ROLLBACK');
+            await client.query('ROLLBACK');
             throw error;
+        } finally {
+            client.release();
         }
     }
 
     static async getBonsLivraisonDeFacture(id_facture) {
         return await BonLivraisonFacture.getByFacture(id_facture);
     }
-} // <--- L'ACCOLADE DE FIN DE CLASSE DOIT ÊTRE ICI
+}
 
 module.exports = Facture;

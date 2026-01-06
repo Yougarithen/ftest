@@ -55,33 +55,100 @@ class Devis {
         return devis;
     }
 
-    static async create(data) {
-        // Générer un numéro de devis automatique
-        const lastDevisResult = await pool.query('SELECT numero_devis FROM Devis ORDER BY id_devis DESC LIMIT 1');
-        const lastDevis = lastDevisResult.rows[0];
-        let numeroDevis = 'DEV-001';
+    /**
+     * Générer un numéro de devis unique au format DEV-AAMMJJ-XXX
+     * @param {Date} date - Date du devis
+     * @returns {Promise<string>} Numéro de devis généré
+     */
+    static async genererNumeroDevis(date = new Date()) {
+        // Formater la date: AAMMJJ
+        const annee = date.getFullYear().toString().slice(-2);
+        const mois = (date.getMonth() + 1).toString().padStart(2, '0');
+        const jour = date.getDate().toString().padStart(2, '0');
+        const prefixe = `DEV-${annee}${mois}${jour}`;
 
-        if (lastDevis) {
-            const lastNum = parseInt(lastDevis.numero_devis.split('-')[1]);
-            numeroDevis = `DEV-${String(lastNum + 1).padStart(3, '0')}`;
+        // Trouver le dernier numéro du jour avec verrouillage pour éviter les doublons
+        const result = await pool.query(`
+            SELECT numero_devis 
+            FROM Devis 
+            WHERE numero_devis LIKE $1 
+            ORDER BY numero_devis DESC 
+            LIMIT 1
+            FOR UPDATE
+        `, [`${prefixe}%`]);
+
+        let serie = 1;
+        if (result.rows.length > 0) {
+            const match = result.rows[0].numero_devis.match(/-(\d+)$/);
+            if (match) {
+                serie = parseInt(match[1], 10) + 1;
+            }
         }
 
-        const result = await pool.query(`
-      INSERT INTO Devis (numero_devis, id_client, date_devis, date_validite, statut, remise_globale, conditions_paiement, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *
-    `, [
-            numeroDevis,
-            data.id_client,
-            data.date_devis || new Date().toISOString().split('T')[0],
-            data.date_validite || null,
-            data.statut || 'Brouillon',
-            data.remise_globale || 0,
-            data.conditions_paiement || null,
-            data.notes || null
-        ]);
+        return `${prefixe}-${serie.toString().padStart(3, '0')}`;
+    }
 
-        return this.getById(result.rows[0].id_devis);
+    static async create(data) {
+        const client = await pool.connect();
+
+        try {
+            await client.query('BEGIN');
+
+            // Générer le numéro de devis (utiliser celui fourni ou en générer un nouveau)
+            let numeroDevis = data.numero_devis;
+
+            if (!numeroDevis) {
+                const dateDevis = data.date_devis ? new Date(data.date_devis) : new Date();
+                const annee = dateDevis.getFullYear().toString().slice(-2);
+                const mois = (dateDevis.getMonth() + 1).toString().padStart(2, '0');
+                const jour = dateDevis.getDate().toString().padStart(2, '0');
+                const prefixe = `DEV-${annee}${mois}${jour}`;
+
+                // Verrouiller la table pour éviter les doublons
+                const lastResult = await client.query(`
+                    SELECT numero_devis 
+                    FROM Devis 
+                    WHERE numero_devis LIKE $1 
+                    ORDER BY numero_devis DESC 
+                    LIMIT 1
+                    FOR UPDATE
+                `, [`${prefixe}%`]);
+
+                let serie = 1;
+                if (lastResult.rows.length > 0) {
+                    const match = lastResult.rows[0].numero_devis.match(/-(\d+)$/);
+                    if (match) {
+                        serie = parseInt(match[1], 10) + 1;
+                    }
+                }
+
+                numeroDevis = `${prefixe}-${serie.toString().padStart(3, '0')}`;
+            }
+
+            const result = await client.query(`
+                INSERT INTO Devis (numero_devis, id_client, date_devis, date_validite, statut, remise_globale, conditions_paiement, notes)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING *
+            `, [
+                numeroDevis,
+                data.id_client,
+                data.date_devis || new Date().toISOString().split('T')[0],
+                data.date_validite || null,
+                data.statut || 'Brouillon',
+                data.remise_globale || 0,
+                data.conditions_paiement || null,
+                data.notes || null
+            ]);
+
+            await client.query('COMMIT');
+            return this.getById(result.rows[0].id_devis);
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
     }
 
     static async update(id, data) {
@@ -170,7 +237,8 @@ class Devis {
                 id_devis: id_devis,
                 remise_globale: devis.remise_globale,
                 conditions_paiement: devis.conditions_paiement,
-                notes: devis.notes
+                notes: devis.notes,
+                type_facture: 'FACTURE'
             });
 
             // Copier les lignes du devis vers la facture
