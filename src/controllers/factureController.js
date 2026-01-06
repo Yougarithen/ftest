@@ -76,3 +76,35 @@ exports.getFacturesCredit = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+exports.getBonsLivraisonNonFactures = async (req, res) => {
+    try {
+        const { id_client } = req.params;
+        const bons = await Facture.getBonsLivraisonNonFactures(id_client);
+        res.json({ success: true, data: bons });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.creerFactureDepuisBons = async (req, res) => {
+    try {
+        const facture = await Facture.creerFactureDepuisBons(req.body);
+        res.status(201).json({
+            success: true,
+            data: facture,
+            message: 'Facture créée à partir des bons de livraison'
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, error: error.message });
+    }
+};
+
+exports.getBonsLivraisonDeFacture = async (req, res) => {
+    try {
+        const bons = await Facture.getBonsLivraisonDeFacture(req.params.id);
+        res.json({ success: true, data: bons });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};

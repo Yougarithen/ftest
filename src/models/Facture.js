@@ -1,6 +1,6 @@
 // Model pour les factures - PostgreSQL VERSION CORRIGÉE
 const pool = require('../database/connection');
-
+const BonLivraisonFacture = require('./BonLivraisonFacture');
 class Facture {
 
     static async getAll() {
@@ -200,5 +200,102 @@ class Facture {
         return result.rows;
     }
 }
+// Récupérer les bons de livraison non facturés d'un client
+static async getBonsLivraisonNonFactures(id_client) {
+    const result = await pool.query(`
+        SELECT 
+            f.id_facture,
+            f.numero_facture,
+            f.date_facture,
+            f.statut,
+            f.notes,
+            COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100)), 0) as montant_ht,
+            COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100) * lf.taux_tva / 100), 0) as montant_tva,
+            COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100) * (1 + lf.taux_tva / 100)), 0) as montant_ttc,
+            COUNT(lf.id_ligne) as nb_lignes
+        FROM Facture f
+        LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
+        WHERE f.id_client = $1 
+            AND f.type_facture = 'BON_LIVRAISON'
+            AND f.id_facture NOT IN (
+                SELECT id_bon_livraison FROM BonLivraisonFacture
+            )
+        GROUP BY f.id_facture
+        ORDER BY f.date_facture DESC
+    `, [id_client]);
 
+    return result.rows;
+}
+
+// Créer une facture à partir de bons de livraison
+static async creerFactureDepuisBons(data) {
+    const client = await pool.query('BEGIN');
+
+    try {
+        // 1. Générer le numéro de facture
+        const lastFactureResult = await pool.query(
+            "SELECT numero_facture FROM Facture WHERE type_facture = 'FACTURE' ORDER BY id_facture DESC LIMIT 1"
+        );
+        const lastFacture = lastFactureResult.rows[0];
+        let numeroFacture = 'FAC-001';
+
+        if (lastFacture) {
+            const lastNum = parseInt(lastFacture.numero_facture.split('-')[1]);
+            numeroFacture = `FAC-${String(lastNum + 1).padStart(3, '0')}`;
+        }
+
+        // 2. Créer la facture
+        const factureResult = await pool.query(`
+            INSERT INTO Facture (
+                numero_facture, id_client, date_facture, date_echeance, 
+                statut, type_facture, remise_globale, conditions_paiement, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING *
+        `, [
+            numeroFacture,
+            data.id_client,
+            data.date_facture || new Date().toISOString().split('T')[0],
+            data.date_echeance || null,
+            data.statut || 'Brouillon',
+            'FACTURE',
+            data.remise_globale || 0,
+            data.conditions_paiement || null,
+            data.notes || null
+        ]);
+
+        const id_facture = factureResult.rows[0].id_facture;
+
+        // 3. Récupérer toutes les lignes des bons sélectionnés et créer les liaisons
+        for (const id_bon of data.id_bons_livraison) {
+            // Copier les lignes du bon vers la facture
+            await pool.query(`
+                INSERT INTO LigneFacture (
+                    id_facture, id_produit, quantite, unite_vente, 
+                    prix_unitaire_ht, taux_tva, remise_ligne, description
+                )
+                SELECT 
+                    $1, id_produit, quantite, unite_vente,
+                    prix_unitaire_ht, taux_tva, remise_ligne, description
+                FROM LigneFacture
+                WHERE id_facture = $2
+            `, [id_facture, id_bon]);
+
+            // Créer la liaison bon -> facture
+            await BonLivraisonFacture.create(id_bon, id_facture);
+        }
+
+        await pool.query('COMMIT');
+        return this.getById(id_facture);
+
+    } catch (error) {
+        await pool.query('ROLLBACK');
+        throw error;
+    }
+}
+
+// Récupérer les bons de livraison d'une facture
+static async getBonsLivraisonDeFacture(id_facture) {
+    return await BonLivraisonFacture.getByFacture(id_facture);
+}
 module.exports = Facture;
