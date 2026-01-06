@@ -96,13 +96,19 @@ class Facture {
     }
 
     static async create(data) {
-        const lastFactureResult = await pool.query('SELECT numero_facture FROM Facture ORDER BY id_facture DESC LIMIT 1');
-        const lastFacture = lastFactureResult.rows[0];
-        let numeroFacture = 'FAC-001';
+        // ✅ MODIFIÉ: Utiliser le numéro fourni par le frontend, sinon générer un fallback
+        let numeroFacture = data.numero_facture;
 
-        if (lastFacture) {
-            const lastNum = parseInt(lastFacture.numero_facture.split('-')[1]);
-            numeroFacture = `FAC-${String(lastNum + 1).padStart(3, '0')}`;
+        if (!numeroFacture) {
+            // Fallback: générer un numéro simple si le frontend n'en fournit pas
+            const lastFactureResult = await pool.query('SELECT numero_facture FROM Facture ORDER BY id_facture DESC LIMIT 1');
+            const lastFacture = lastFactureResult.rows[0];
+            numeroFacture = 'FAC-001';
+
+            if (lastFacture) {
+                const lastNum = parseInt(lastFacture.numero_facture.split('-')[1]);
+                numeroFacture = `FAC-${String(lastNum + 1).padStart(3, '0')}`;
+            }
         }
 
         const result = await pool.query(`
@@ -220,18 +226,24 @@ class Facture {
     }
 
     static async creerFactureDepuisBons(data) {
-        await pool.query('BEGIN'); // Correction: utiliser await pool.query('BEGIN') directement
+        await pool.query('BEGIN');
 
         try {
-            const lastFactureResult = await pool.query(
-                "SELECT numero_facture FROM Facture WHERE type_facture = 'FACTURE' ORDER BY id_facture DESC LIMIT 1"
-            );
-            const lastFacture = lastFactureResult.rows[0];
-            let numeroFacture = 'FAC-001';
+            // ✅ MODIFIÉ: Utiliser le numéro fourni par le frontend, sinon générer un fallback
+            let numeroFacture = data.numero_facture;
 
-            if (lastFacture) {
-                const lastNum = parseInt(lastFacture.numero_facture.split('-')[1]);
-                numeroFacture = `FAC-${String(lastNum + 1).padStart(3, '0')}`;
+            if (!numeroFacture) {
+                // Fallback: générer un numéro simple si le frontend n'en fournit pas
+                const lastFactureResult = await pool.query(
+                    "SELECT numero_facture FROM Facture WHERE type_facture = 'FACTURE' ORDER BY id_facture DESC LIMIT 1"
+                );
+                const lastFacture = lastFactureResult.rows[0];
+                numeroFacture = 'FAC-001';
+
+                if (lastFacture) {
+                    const lastNum = parseInt(lastFacture.numero_facture.split('-')[1]);
+                    numeroFacture = `FAC-${String(lastNum + 1).padStart(3, '0')}`;
+                }
             }
 
             const factureResult = await pool.query(`
