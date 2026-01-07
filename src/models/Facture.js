@@ -282,13 +282,13 @@ class Facture {
 
                 // Verrouiller pour éviter les doublons
                 const lastResult = await client.query(`
-                    SELECT numero_facture 
-                    FROM Facture 
-                    WHERE numero_facture LIKE $1 
-                    ORDER BY numero_facture DESC 
-                    LIMIT 1
-                    FOR UPDATE
-                `, [`${prefixe}%`]);
+                SELECT numero_facture 
+                FROM facture 
+                WHERE numero_facture LIKE $1 
+                ORDER BY numero_facture DESC 
+                LIMIT 1
+                FOR UPDATE
+            `, [`${prefixe}%`]);
 
                 let serie = 1;
                 if (lastResult.rows.length > 0) {
@@ -301,14 +301,15 @@ class Facture {
                 numeroFacture = `${prefixe}-${serie.toString().padStart(3, '0')}`;
             }
 
+            // 1️⃣ CRÉER LA FACTURE D'ABORD
             const factureResult = await client.query(`
-                INSERT INTO Facture (
-                    numero_facture, id_client, date_facture, date_echeance, 
-                    statut, type_facture, remise_globale, conditions_paiement, notes
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                RETURNING *
-            `, [
+            INSERT INTO facture (
+                numero_facture, id_client, date_facture, date_echeance, 
+                statut, type_facture, remise_globale, conditions_paiement, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING *
+        `, [
                 numeroFacture,
                 data.id_client,
                 data.date_facture || new Date().toISOString().split('T')[0],
@@ -322,20 +323,25 @@ class Facture {
 
             const id_facture = factureResult.rows[0].id_facture;
 
+            // 2️⃣ COPIER LES LIGNES DES BONS DE LIVRAISON
             for (const id_bon of data.id_bons_livraison) {
                 await client.query(`
-                    INSERT INTO LigneFacture (
-                        id_facture, id_produit, quantite, unite_vente, 
-                        prix_unitaire_ht, taux_tva, remise_ligne, description
-                    )
-                    SELECT 
-                        $1, id_produit, quantite, unite_vente,
-                        prix_unitaire_ht, taux_tva, remise_ligne, description
-                    FROM LigneFacture
-                    WHERE id_facture = $2
-                `, [id_facture, id_bon]);
+                INSERT INTO lignefacture (
+                    id_facture, id_produit, quantite, unite_vente, 
+                    prix_unitaire_ht, taux_tva, remise_ligne, description
+                )
+                SELECT 
+                    $1, id_produit, quantite, unite_vente,
+                    prix_unitaire_ht, taux_tva, remise_ligne, description
+                FROM lignefacture
+                WHERE id_facture = $2
+            `, [id_facture, id_bon]);
 
-                await BonLivraisonFacture.create(id_bon, id_facture);
+                // 3️⃣ CRÉER LA LIAISON BON → FACTURE
+                await client.query(`
+                INSERT INTO bonlivraisonfacture (id_bon_livraison, id_facture)
+                VALUES ($1, $2)
+            `, [id_bon, id_facture]);
             }
 
             await client.query('COMMIT');
@@ -343,12 +349,12 @@ class Facture {
 
         } catch (error) {
             await client.query('ROLLBACK');
+            console.error('Erreur creerFactureDepuisBons:', error);
             throw error;
         } finally {
             client.release();
         }
     }
-
     static async getBonsLivraisonDeFacture(id_facture) {
         return await BonLivraisonFacture.getByFacture(id_facture);
     }
