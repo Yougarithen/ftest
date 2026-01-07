@@ -35,7 +35,19 @@ exports.ajusterStock = async (req, res) => {
         res.status(400).json({ success: false, error: error.message });
     }
 };
-
+exports.getHistoriqueGlobal = async (req, res) => {
+    try {
+        const result = await pool.query(`
+      SELECT * FROM Vue_HistoriqueAjustements
+      WHERE type_article = 'PRODUIT'
+      ORDER BY date_ajustement DESC
+      LIMIT 100
+    `);
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
 exports.getHistoriqueAjustements = async (req, res) => {
     try {
         const historique = await Produit.getHistoriqueAjustements(req.params.id);

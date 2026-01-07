@@ -15,5 +15,7 @@ router.get('/:id/recette', requirePermission('produits.read'), controller.getRec
 router.post('/:id/recette', requirePermission('produits.update'), controller.ajouterIngredient);
 router.post('/:id/ajuster', requirePermission('produits.update'), controller.ajusterStock); // 👈 NOUVEAU
 router.get('/:id/historique', requirePermission('produits.read'), controller.getHistoriqueAjustements); // 👈 NOUVEAU
+// Dans produitRoutes.js, ajouter :
+router.get('/ajustements/historique', requirePermission('produits.read'), controller.getHistoriqueGlobal);
 
 module.exports = router;
