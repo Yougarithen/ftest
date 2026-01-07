@@ -161,8 +161,8 @@ class MatierePremiere {
             await client.query('BEGIN');
 
             const matiereResult = await client.query(`
-      SELECT * FROM MatierePremiere WHERE id_matiere = $1
-    `, [id]);
+        SELECT * FROM MatierePremiere WHERE id_matiere = $1
+      `, [id]);
             const matiere = matiereResult.rows[0];
 
             if (!matiere) throw new Error('Matière première introuvable');
@@ -175,18 +175,18 @@ class MatierePremiere {
 
             // Enregistrer l'ajustement
             await client.query(`
-      INSERT INTO AjustementStock (
-        type_article, 
-        id_article, 
-        type_ajustement, 
-        quantite_avant, 
-        quantite_ajustee, 
-        quantite_apres, 
-        responsable, 
-        motif
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [
+        INSERT INTO AjustementStock (
+          type_article, 
+          id_article, 
+          type_ajustement, 
+          quantite_avant, 
+          quantite_ajustee, 
+          quantite_apres, 
+          responsable, 
+          motif
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
                 'MATIERE',
                 id,
                 typeAjustement,
@@ -199,11 +199,11 @@ class MatierePremiere {
 
             // Mettre à jour le stock
             const updateResult = await client.query(`
-      UPDATE MatierePremiere 
-      SET stock_actuel = $1 
-      WHERE id_matiere = $2 
-      RETURNING *
-    `, [nouvelleQuantite, id]);
+        UPDATE MatierePremiere 
+        SET stock_actuel = $1 
+        WHERE id_matiere = $2 
+        RETURNING *
+      `, [nouvelleQuantite, id]);
 
             await client.query('COMMIT');
             return updateResult.rows[0];
@@ -219,11 +219,13 @@ class MatierePremiere {
     // Récupérer l'historique des ajustements d'une matière
     static async getHistoriqueAjustements(id) {
         const result = await pool.query(`
-    SELECT * FROM Vue_HistoriqueAjustements
-    WHERE type_article = 'MATIERE' AND id_article = $1
-    ORDER BY date_ajustement DESC
-  `, [id]);
+      SELECT * FROM Vue_HistoriqueAjustements
+      WHERE type_article = 'MATIERE' AND id_article = $1
+      ORDER BY date_ajustement DESC
+    `, [id]);
         return result.rows;
     }
+
+}  // 👈 ACCOLADE FERMANTE MANQUANTE !
 
 module.exports = MatierePremiere;
