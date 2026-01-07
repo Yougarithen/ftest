@@ -258,21 +258,21 @@ class Facture {
                 for (const ligne of lignesResult.rows) {
                     await client.query(`
                     UPDATE produit 
-                    SET stock = stock - $1 
+                    SET stock_actuel = stock_actuel - $1 
                     WHERE id_produit = $2
                 `, [ligne.quantite, ligne.id_produit]);
 
                     // Vérifier que le stock ne devient pas négatif
                     const stockCheck = await client.query(`
-                    SELECT stock, nom 
+                    SELECT stock_actuel, nom 
                     FROM produit 
                     WHERE id_produit = $1
                 `, [ligne.id_produit]);
 
-                    if (stockCheck.rows[0].stock < 0) {
+                    if (stockCheck.rows[0].stock_actuel < 0) {
                         throw new Error(
                             `Stock insuffisant pour ${stockCheck.rows[0].nom}. ` +
-                            `Stock disponible: ${stockCheck.rows[0].stock + ligne.quantite}`
+                            `Stock disponible: ${stockCheck.rows[0].stock_actuel + ligne.quantite}`
                         );
                     }
                 }
