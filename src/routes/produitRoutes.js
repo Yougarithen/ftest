@@ -1,4 +1,3 @@
-
 // ========== produitRoutes.js - SÉCURISÉ ==========
 const express = require('express');
 const router = express.Router();
@@ -14,5 +13,7 @@ router.put('/:id', requirePermission('produits.update'), controller.update);
 router.delete('/:id', requirePermission('produits.delete'), controller.delete);
 router.get('/:id/recette', requirePermission('produits.read'), controller.getRecette);
 router.post('/:id/recette', requirePermission('produits.update'), controller.ajouterIngredient);
+router.post('/:id/ajuster', requirePermission('produits.update'), controller.ajusterStock); // 👈 NOUVEAU
+router.get('/:id/historique', requirePermission('produits.read'), controller.getHistoriqueAjustements); // 👈 NOUVEAU
 
 module.exports = router;

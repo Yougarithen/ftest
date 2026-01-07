@@ -154,38 +154,42 @@ class MatierePremiere {
         return result.rows;
     }
 
-    static async ajusterStock(id, quantite, responsable, motif) {
+    static async ajusterStock(id, quantite, responsable, typeAjustement, motif) {
         const client = await pool.connect();
 
         try {
             await client.query('BEGIN');
 
             const matiereResult = await client.query(`
-        SELECT 
-          id_matiere,
-          nom,
-          unite,
-          typem AS "typeM",
-          stock_actuel,
-          stock_minimum,
-          prix_unitaire
-        FROM MatierePremiere 
-        WHERE id_matiere = $1
-      `, [id]);
+      SELECT * FROM MatierePremiere WHERE id_matiere = $1
+    `, [id]);
             const matiere = matiereResult.rows[0];
 
             if (!matiere) throw new Error('Matière première introuvable');
 
             const nouvelleQuantite = parseFloat(matiere.stock_actuel) + parseFloat(quantite);
 
+            if (nouvelleQuantite < 0) {
+                throw new Error('Le stock ne peut pas être négatif');
+            }
+
             // Enregistrer l'ajustement
             await client.query(`
-        INSERT INTO AjustementStock (type_article, id_article, type_ajustement, quantite_avant, quantite_ajustee, quantite_apres, responsable, motif)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, [
+      INSERT INTO AjustementStock (
+        type_article, 
+        id_article, 
+        type_ajustement, 
+        quantite_avant, 
+        quantite_ajustee, 
+        quantite_apres, 
+        responsable, 
+        motif
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
                 'MATIERE',
                 id,
-                quantite > 0 ? 'AJOUT' : 'RETRAIT',
+                typeAjustement,
                 matiere.stock_actuel,
                 quantite,
                 nouvelleQuantite,
@@ -195,19 +199,11 @@ class MatierePremiere {
 
             // Mettre à jour le stock
             const updateResult = await client.query(`
-        UPDATE MatierePremiere 
-        SET stock_actuel = $1 
-        WHERE id_matiere = $2 
-        RETURNING 
-          id_matiere,
-          nom,
-          unite,
-          typem AS "typeM",
-          stock_actuel,
-          stock_minimum,
-          prix_unitaire,
-          date_creation
-      `, [nouvelleQuantite, id]);
+      UPDATE MatierePremiere 
+      SET stock_actuel = $1 
+      WHERE id_matiere = $2 
+      RETURNING *
+    `, [nouvelleQuantite, id]);
 
             await client.query('COMMIT');
             return updateResult.rows[0];
@@ -219,6 +215,15 @@ class MatierePremiere {
             client.release();
         }
     }
-}
+
+    // Récupérer l'historique des ajustements d'une matière
+    static async getHistoriqueAjustements(id) {
+        const result = await pool.query(`
+    SELECT * FROM Vue_HistoriqueAjustements
+    WHERE type_article = 'MATIERE' AND id_article = $1
+    ORDER BY date_ajustement DESC
+  `, [id]);
+        return result.rows;
+    }
 
 module.exports = MatierePremiere;

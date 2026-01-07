@@ -34,6 +34,81 @@ class Produit {
     return result.rows[0];
   }
 
+    static async ajusterStock(id, quantite, responsable, typeAjustement, motif) {
+        const client = await pool.connect();
+
+        try {
+            await client.query('BEGIN');
+
+            // Récupérer le produit actuel
+            const produitResult = await client.query(
+                'SELECT * FROM Produit WHERE id_produit = $1',
+                [id]
+            );
+            const produit = produitResult.rows[0];
+
+            if (!produit) throw new Error('Produit introuvable');
+
+            const nouvelleQuantite = parseFloat(produit.stock_actuel) + parseFloat(quantite);
+
+            if (nouvelleQuantite < 0) {
+                throw new Error('Le stock ne peut pas être négatif');
+            }
+
+            // Enregistrer l'ajustement
+            await client.query(`
+      INSERT INTO AjustementStock (
+        type_article, 
+        id_article, 
+        type_ajustement, 
+        quantite_avant, 
+        quantite_ajustee, 
+        quantite_apres, 
+        responsable, 
+        motif
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+                'PRODUIT',
+                id,
+                typeAjustement,
+                produit.stock_actuel,
+                quantite,
+                nouvelleQuantite,
+                responsable,
+                motif
+            ]);
+
+            // Mettre à jour le stock
+            const updateResult = await client.query(`
+      UPDATE Produit 
+      SET stock_actuel = $1 
+      WHERE id_produit = $2 
+      RETURNING *
+    `, [nouvelleQuantite, id]);
+
+            await client.query('COMMIT');
+            return updateResult.rows[0];
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    // Récupérer l'historique des ajustements d'un produit
+    static async getHistoriqueAjustements(id) {
+        const result = await pool.query(`
+    SELECT * FROM Vue_HistoriqueAjustements
+    WHERE type_article = 'PRODUIT' AND id_article = $1
+    ORDER BY date_ajustement DESC
+  `, [id]);
+        return result.rows;
+    }
+
+
   static async update(id, data) {
     const result = await pool.query(`
       UPDATE Produit 

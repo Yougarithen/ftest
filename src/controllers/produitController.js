@@ -10,6 +10,41 @@ exports.getAll = async (req, res) => {
   }
 };
 
+exports.ajusterStock = async (req, res) => {
+    try {
+        const { quantite, responsable, typeAjustement, motif } = req.body;
+
+        // Validation
+        if (!typeAjustement) {
+            return res.status(400).json({
+                success: false,
+                error: 'Le type d\'ajustement est obligatoire'
+            });
+        }
+
+        const produit = await Produit.ajusterStock(
+            req.params.id,
+            quantite,
+            responsable,
+            typeAjustement,
+            motif
+        );
+
+        res.json({ success: true, data: produit });
+    } catch (error) {
+        res.status(400).json({ success: false, error: error.message });
+    }
+};
+
+exports.getHistoriqueAjustements = async (req, res) => {
+    try {
+        const historique = await Produit.getHistoriqueAjustements(req.params.id);
+        res.json({ success: true, data: historique });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 exports.getById = async (req, res) => {
   try {
     const produit = await Produit.getById(req.params.id);

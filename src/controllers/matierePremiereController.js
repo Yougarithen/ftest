@@ -10,6 +10,15 @@ exports.getAll = async (req, res) => {
   }
 };
 
+exports.getHistoriqueAjustements = async (req, res) => {
+    try {
+        const historique = await MatierePremiere.getHistoriqueAjustements(req.params.id);
+        res.json({ success: true, data: historique });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 exports.getById = async (req, res) => {
   try {
     const matiere = await MatierePremiere.getById(req.params.id);

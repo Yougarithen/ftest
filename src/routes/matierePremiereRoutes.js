@@ -14,5 +14,6 @@ router.post('/', requirePermission('matieres.create'), controller.create);
 router.put('/:id', requirePermission('matieres.update'), controller.update);
 router.delete('/:id', requirePermission('matieres.delete'), controller.delete);
 router.post('/:id/ajuster', requirePermission('matieres.update'), controller.ajusterStock);
+router.get('/:id/historique', requirePermission('matieres.read'), controller.getHistoriqueAjustements); // 👈 NOUVEAU
 
 module.exports = router;
