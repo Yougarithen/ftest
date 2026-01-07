@@ -219,10 +219,10 @@ class Facture {
     }
 
     /**
-     * Valider une facture
+     * Valider une facture ou un bon de livraison
      * IMPORTANT: 
-     * - Si la facture provient de bons de livraison, le stock a déjà été déduit
-     * - Si c'est une facture directe, on déduit le stock maintenant
+     * - Seuls les BONS DE LIVRAISON (type_facture = 'BON_LIVRAISON') déduisent le stock
+     * - Les FACTURES normales ne déduisent PAS le stock (le stock a déjà été déduit par les bons)
      */
     static async valider(id) {
         const client = await pool.connect();
@@ -230,7 +230,7 @@ class Facture {
         try {
             await client.query('BEGIN');
 
-            // Vérifier si la facture est déjà validée
+            // Vérifier si la facture est déjà validée et récupérer son type
             const factureCheck = await client.query(`
             SELECT statut, type_facture FROM facture WHERE id_facture = $1
         `, [id]);
@@ -243,18 +243,11 @@ class Facture {
                 throw new Error('Cette facture a déjà été validée');
             }
 
-            // ✅ Vérifier si la facture provient de bons de livraison
-            const bonLivraisonCheck = await client.query(`
-            SELECT COUNT(*) as count 
-            FROM bonlivraisonfacture 
-            WHERE id_facture = $1
-        `, [id]);
+            const typeFacture = factureCheck.rows[0].type_facture;
 
-            const provientDeBons = bonLivraisonCheck.rows[0].count > 0;
-
-            // ⚠️ Ne déduire le stock QUE si la facture ne provient PAS de bons
-            if (!provientDeBons) {
-                // Récupérer les lignes de la facture
+            // ✅ Déduire le stock UNIQUEMENT pour les BONS DE LIVRAISON
+            if (typeFacture === 'BON_LIVRAISON') {
+                // Récupérer les lignes du bon de livraison
                 const lignesResult = await client.query(`
                 SELECT id_produit, quantite 
                 FROM lignefacture 
@@ -265,27 +258,28 @@ class Facture {
                 for (const ligne of lignesResult.rows) {
                     await client.query(`
                     UPDATE produit 
-                    SET quantite_stock = quantite_stock - $1 
+                    SET stock = stock - $1 
                     WHERE id_produit = $2
                 `, [ligne.quantite, ligne.id_produit]);
 
                     // Vérifier que le stock ne devient pas négatif
                     const stockCheck = await client.query(`
-                    SELECT quantite_stock, nom 
+                    SELECT stock, nom 
                     FROM produit 
                     WHERE id_produit = $1
                 `, [ligne.id_produit]);
 
-                    if (stockCheck.rows[0].quantite_stock < 0) {
+                    if (stockCheck.rows[0].stock < 0) {
                         throw new Error(
                             `Stock insuffisant pour ${stockCheck.rows[0].nom}. ` +
-                            `Stock disponible: ${stockCheck.rows[0].quantite_stock + ligne.quantite}`
+                            `Stock disponible: ${stockCheck.rows[0].stock + ligne.quantite}`
                         );
                     }
                 }
             }
+            // Pour les FACTURES normales, on ne touche PAS au stock
 
-            // Valider la facture
+            // Valider la facture/bon
             const result = await client.query(`
             UPDATE facture 
             SET statut = 'Validée', date_validation = CURRENT_TIMESTAMP
