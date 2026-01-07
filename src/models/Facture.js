@@ -218,21 +218,91 @@ class Facture {
         return result.rows[0];
     }
 
+    /**
+     * Valider une facture
+     * IMPORTANT: 
+     * - Si la facture provient de bons de livraison, le stock a déjà été déduit
+     * - Si c'est une facture directe, on déduit le stock maintenant
+     */
     static async valider(id) {
-        const result = await pool.query(`
-      UPDATE Facture 
-      SET statut = 'Validée', date_validation = CURRENT_TIMESTAMP
-      WHERE id_facture = $1 AND statut = 'Brouillon'
-      RETURNING *
-    `, [id]);
+        const client = await pool.connect();
 
-        if (result.rowCount === 0) {
-            throw new Error('La facture ne peut pas être validée');
+        try {
+            await client.query('BEGIN');
+
+            // Vérifier si la facture est déjà validée
+            const factureCheck = await client.query(`
+            SELECT statut, type_facture FROM facture WHERE id_facture = $1
+        `, [id]);
+
+            if (factureCheck.rows.length === 0) {
+                throw new Error('Facture introuvable');
+            }
+
+            if (factureCheck.rows[0].statut !== 'Brouillon') {
+                throw new Error('Cette facture a déjà été validée');
+            }
+
+            // ✅ Vérifier si la facture provient de bons de livraison
+            const bonLivraisonCheck = await client.query(`
+            SELECT COUNT(*) as count 
+            FROM bonlivraisonfacture 
+            WHERE id_facture = $1
+        `, [id]);
+
+            const provientDeBons = bonLivraisonCheck.rows[0].count > 0;
+
+            // ⚠️ Ne déduire le stock QUE si la facture ne provient PAS de bons
+            if (!provientDeBons) {
+                // Récupérer les lignes de la facture
+                const lignesResult = await client.query(`
+                SELECT id_produit, quantite 
+                FROM lignefacture 
+                WHERE id_facture = $1
+            `, [id]);
+
+                // Déduire le stock pour chaque produit
+                for (const ligne of lignesResult.rows) {
+                    await client.query(`
+                    UPDATE produit 
+                    SET quantite_stock = quantite_stock - $1 
+                    WHERE id_produit = $2
+                `, [ligne.quantite, ligne.id_produit]);
+
+                    // Vérifier que le stock ne devient pas négatif
+                    const stockCheck = await client.query(`
+                    SELECT quantite_stock, nom 
+                    FROM produit 
+                    WHERE id_produit = $1
+                `, [ligne.id_produit]);
+
+                    if (stockCheck.rows[0].quantite_stock < 0) {
+                        throw new Error(
+                            `Stock insuffisant pour ${stockCheck.rows[0].nom}. ` +
+                            `Stock disponible: ${stockCheck.rows[0].quantite_stock + ligne.quantite}`
+                        );
+                    }
+                }
+            }
+
+            // Valider la facture
+            const result = await client.query(`
+            UPDATE facture 
+            SET statut = 'Validée', date_validation = CURRENT_TIMESTAMP
+            WHERE id_facture = $1
+            RETURNING *
+        `, [id]);
+
+            await client.query('COMMIT');
+            return this.getById(id);
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
         }
-
-        return this.getById(id);
     }
-
     static async getFacturesCredit() {
         const result = await pool.query('SELECT * FROM Vue_FacturesCredit');
         return result.rows;
