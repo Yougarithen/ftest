@@ -1,6 +1,6 @@
 // Controller produits - PostgreSQL
 const Produit = require('../models/Produit');
-
+const pool = require('../database/connection'); // 👈 AJOUTER CETTE LIGNE
 exports.getAll = async (req, res) => {
   try {
     const produits = await Produit.getAll();
