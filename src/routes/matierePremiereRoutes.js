@@ -9,11 +9,15 @@ router.use(authenticate);
 
 router.get('/', requirePermission('matieres.read'), controller.getAll);
 router.get('/alertes', requirePermission('matieres.read'), controller.getAlertes);
+
+// 👇 AJOUTER CETTE ROUTE AVANT /:id
+router.get('/historique-global', requirePermission('matieres.read'), controller.getHistoriqueGlobal);
+
 router.get('/:id', requirePermission('matieres.read'), controller.getById);
 router.post('/', requirePermission('matieres.create'), controller.create);
 router.put('/:id', requirePermission('matieres.update'), controller.update);
 router.delete('/:id', requirePermission('matieres.delete'), controller.delete);
 router.post('/:id/ajuster', requirePermission('matieres.update'), controller.ajusterStock);
-router.get('/:id/historique', requirePermission('matieres.read'), controller.getHistoriqueAjustements); // 👈 NOUVEAU
+router.get('/:id/historique', requirePermission('matieres.read'), controller.getHistoriqueAjustements);
 
 module.exports = router;

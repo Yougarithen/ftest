@@ -1,5 +1,6 @@
 // Controller matières premières - PostgreSQL
 const MatierePremiere = require('../models/MatierePremiere');
+const pool = require('../database/connection'); // 👈 AJOUTER CETTE LIGNE
 
 exports.getAll = async (req, res) => {
     try {
@@ -106,6 +107,21 @@ exports.getHistoriqueAjustements = async (req, res) => {
     try {
         const historique = await MatierePremiere.getHistoriqueAjustements(req.params.id);
         res.json({ success: true, data: historique });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// 👇 NOUVELLE FONCTION
+exports.getHistoriqueGlobal = async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT * FROM Vue_HistoriqueAjustements
+            WHERE type_article = 'MATIERE'
+            ORDER BY date_ajustement DESC
+            LIMIT 100
+        `);
+        res.json({ success: true, data: result.rows });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
