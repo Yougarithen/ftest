@@ -1,5 +1,4 @@
-
-// ========== productionRoutes.js - SÉCURISÉ ==========
+// ========== productionRoutes.js - SÉCURISÉ avec gestion rebuts ==========
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/productionController');
@@ -19,6 +18,9 @@ router.get('/verifier-stock/:id', requirePermission('production.read'), controll
 // Routes de création/modification
 router.post('/', requirePermission('production.create'), controller.create);
 router.post('/produire', requirePermission('production.create'), controller.produire);
+
+// Route pour mettre à jour les rebuts d'une production existante
+router.patch('/:id/rebuts', requirePermission('production.update'), controller.updateRebuts);
 
 // Routes de suppression
 router.delete('/:id', requirePermission('production.delete'), controller.delete);
