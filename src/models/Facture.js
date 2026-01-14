@@ -1,4 +1,4 @@
-// Model pour les factures - PostgreSQL VERSION CORRIGÉE
+// Model pour les factures - PostgreSQL VERSION avec prix_ttc
 const pool = require('../database/connection');
 const BonLivraisonFacture = require('./BonLivraisonFacture');
 
@@ -18,9 +18,9 @@ class Facture {
         f.remise_globale,
         f.conditions_paiement,
         f.notes,
-        COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100)), 0) as montant_ht,
-        COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100) * lf.taux_tva / 100), 0) as montant_tva,
-        COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100) * (1 + lf.taux_tva / 100)), 0) as montant_ttc
+        COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)), 0) as montant_ttc,
+        COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100)), 0) as montant_ht,
+        COALESCE(SUM((lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)) - (lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100))), 0) as montant_tva
       FROM Facture f
       LEFT JOIN Client c ON f.id_client = c.id_client
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
@@ -62,9 +62,9 @@ class Facture {
         f.remise_globale,
         f.conditions_paiement,
         f.notes,
-        COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100)), 0) as montant_ht,
-        COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100) * lf.taux_tva / 100), 0) as montant_tva,
-        COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100) * (1 + lf.taux_tva / 100)), 0) as montant_ttc
+        COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)), 0) as montant_ttc,
+        COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100)), 0) as montant_ht,
+        COALESCE(SUM((lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)) - (lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100))), 0) as montant_tva
       FROM Facture f
       LEFT JOIN Client c ON f.id_client = c.id_client
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
@@ -203,8 +203,8 @@ class Facture {
 
     static async ajouterLigne(id_facture, data) {
         const result = await pool.query(`
-      INSERT INTO LigneFacture (id_facture, id_produit, quantite, unite_vente, prix_unitaire_ht, taux_tva, remise_ligne, description)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO LigneFacture (id_facture, id_produit, quantite, unite_vente, prix_unitaire_ht, prix_ttc, taux_tva, remise_ligne, description)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `, [
             id_facture,
@@ -212,6 +212,7 @@ class Facture {
             data.quantite,
             data.unite_vente,
             data.prix_unitaire_ht,
+            data.prix_ttc,  // Nouvelle colonne
             data.taux_tva,
             data.remise_ligne || 0,
             data.description || null
@@ -300,9 +301,9 @@ class Facture {
                 f.date_facture,
                 f.statut,
                 f.notes,
-                COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100)), 0) as montant_ht,
-                COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100) * lf.taux_tva / 100), 0) as montant_tva,
-                COALESCE(SUM(lf.quantite * lf.prix_unitaire_ht * (1 - lf.remise_ligne / 100) * (1 + lf.taux_tva / 100)), 0) as montant_ttc,
+                COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)), 0) as montant_ttc,
+                COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100)), 0) as montant_ht,
+                COALESCE(SUM((lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)) - (lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100))), 0) as montant_tva,
                 COUNT(lf.id_ligne) as nb_lignes
             FROM Facture f
             LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
@@ -378,11 +379,11 @@ class Facture {
                 await client.query(`
                 INSERT INTO lignefacture (
                     id_facture, id_produit, quantite, unite_vente, 
-                    prix_unitaire_ht, taux_tva, remise_ligne, description
+                    prix_unitaire_ht, prix_ttc, taux_tva, remise_ligne, description
                 )
                 SELECT 
                     $1, id_produit, quantite, unite_vente,
-                    prix_unitaire_ht, taux_tva, remise_ligne, description
+                    prix_unitaire_ht, prix_ttc, taux_tva, remise_ligne, description
                 FROM lignefacture
                 WHERE id_facture = $2
             `, [id_facture, id_bon]);
