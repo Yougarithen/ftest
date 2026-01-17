@@ -1,4 +1,4 @@
-// Model pour les devis - PostgreSQL (VERSION OPTIMISÉE)
+// Model pour les devis - PostgreSQL (VERSION OPTIMISÉE AVEC PRIX_TTC)
 const pool = require('../database/connection');
 
 class Devis {
@@ -192,11 +192,14 @@ class Devis {
         return result.rowCount;
     }
 
-    // Ajouter une ligne au devis
+    // Ajouter une ligne au devis (AVEC PRIX_TTC)
     static async ajouterLigne(id_devis, data) {
+        // Calculer prix_ttc si non fourni (pour compatibilité)
+        const prixTTC = data.prix_ttc || (data.prix_unitaire_ht * (1 + (data.taux_tva || 0) / 100));
+
         const result = await pool.query(`
-      INSERT INTO LigneDevis (id_devis, id_produit, quantite, unite_vente, prix_unitaire_ht, taux_tva, remise_ligne, description)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO LigneDevis (id_devis, id_produit, quantite, unite_vente, prix_unitaire_ht, prix_ttc, taux_tva, remise_ligne, description)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `, [
             id_devis,
@@ -204,6 +207,7 @@ class Devis {
             data.quantite,
             data.unite_vente,
             data.prix_unitaire_ht,
+            prixTTC,
             data.taux_tva,
             data.remise_ligne || 0,
             data.description || null
@@ -218,7 +222,7 @@ class Devis {
         return result.rowCount;
     }
 
-    // Convertir un devis en facture
+    // Convertir un devis en facture (AVEC PRIX_TTC)
     static async convertirEnFacture(id_devis) {
         const devis = await this.getById(id_devis);
         if (!devis) throw new Error('Devis introuvable');
@@ -241,13 +245,14 @@ class Devis {
                 type_facture: 'FACTURE'
             });
 
-            // Copier les lignes du devis vers la facture
+            // Copier les lignes du devis vers la facture (AVEC PRIX_TTC)
             for (const ligne of devis.lignes) {
                 await Facture.ajouterLigne(facture.id_facture, {
                     id_produit: ligne.id_produit,
                     quantite: ligne.quantite,
                     unite_vente: ligne.unite_vente,
                     prix_unitaire_ht: ligne.prix_unitaire_ht,
+                    prix_ttc: ligne.prix_ttc,
                     taux_tva: ligne.taux_tva,
                     remise_ligne: ligne.remise_ligne,
                     description: ligne.description
@@ -268,7 +273,7 @@ class Devis {
         }
     }
 
-    // Valider un devis et créer un bon de livraison
+    // Valider un devis et créer un bon de livraison (AVEC PRIX_TTC)
     static async validerDevis(id_devis) {
         const devis = await this.getById(id_devis);
         if (!devis) throw new Error('Devis introuvable');
@@ -292,13 +297,14 @@ class Devis {
                 notes: devis.notes
             });
 
-            // Copier les lignes du devis vers le bon de livraison
+            // Copier les lignes du devis vers le bon de livraison (AVEC PRIX_TTC)
             for (const ligne of devis.lignes) {
                 await Facture.ajouterLigne(facture.id_facture, {
                     id_produit: ligne.id_produit,
                     quantite: ligne.quantite,
                     unite_vente: ligne.unite_vente,
                     prix_unitaire_ht: ligne.prix_unitaire_ht,
+                    prix_ttc: ligne.prix_ttc,
                     taux_tva: ligne.taux_tva,
                     remise_ligne: ligne.remise_ligne,
                     description: ligne.description
