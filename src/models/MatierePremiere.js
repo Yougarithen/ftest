@@ -1,4 +1,4 @@
-// Model pour les matières premières - PostgreSQL - VERSION MISE À JOUR
+// Model pour les matières premières - PostgreSQL - AVEC HISTORIQUE
 const pool = require('../database/connection');
 
 class MatierePremiere {
@@ -15,15 +15,17 @@ class MatierePremiere {
         mp.prix_unitaire,
         mp.date_creation,
         (
-          SELECT MAX(r.date_ravitaillement)
-          FROM Ravitaillement r
-          WHERE r.id_matiere = mp.id_matiere
-        ) as dernier_ravitaillement
+          SELECT MAX(a.date_ajustement)
+          FROM AjustementStock a
+          WHERE a.id_article = mp.id_matiere 
+            AND a.type_article = 'MATIERE'
+            AND a.type_ajustement = 'INVENTAIRE'
+        ) as dernier_inventaire
       FROM MatierePremiere mp
       ORDER BY mp.nom
     `);
 
-        console.log('✅ Matières chargées avec dates de ravitaillement');
+        console.log('✅ Matières chargées avec dates d\'inventaire');
         return result.rows;
     }
 
@@ -39,10 +41,12 @@ class MatierePremiere {
         mp.prix_unitaire,
         mp.date_creation,
         (
-          SELECT MAX(r.date_ravitaillement)
-          FROM Ravitaillement r
-          WHERE r.id_matiere = mp.id_matiere
-        ) as dernier_ravitaillement
+          SELECT MAX(a.date_ajustement)
+          FROM AjustementStock a
+          WHERE a.id_article = mp.id_matiere 
+            AND a.type_article = 'MATIERE'
+            AND a.type_ajustement = 'INVENTAIRE'
+        ) as dernier_inventaire
       FROM MatierePremiere mp
       WHERE mp.id_matiere = $1
     `, [id]);
@@ -61,10 +65,12 @@ class MatierePremiere {
         mp.prix_unitaire,
         mp.date_creation,
         (
-          SELECT MAX(r.date_ravitaillement)
-          FROM Ravitaillement r
-          WHERE r.id_matiere = mp.id_matiere
-        ) as dernier_ravitaillement
+          SELECT MAX(a.date_ajustement)
+          FROM AjustementStock a
+          WHERE a.id_article = mp.id_matiere 
+            AND a.type_article = 'MATIERE'
+            AND a.type_ajustement = 'INVENTAIRE'
+        ) as dernier_inventaire
       FROM MatierePremiere mp
       WHERE mp.typem = $1 
       ORDER BY mp.nom
@@ -97,36 +103,92 @@ class MatierePremiere {
         return result.rows[0];
     }
 
-    static async update(id, data) {
-        const result = await pool.query(`
-      UPDATE MatierePremiere 
-      SET nom = $1, 
-          unite = $2, 
-          typem = $3, 
-          stock_actuel = $4, 
-          stock_minimum = $5, 
-          prix_unitaire = $6
-      WHERE id_matiere = $7
-      RETURNING 
-        id_matiere,
-        nom,
-        unite,
-        typem AS "typeM",
-        stock_actuel,
-        stock_minimum,
-        prix_unitaire,
-        date_creation
-    `, [
-            data.nom,
-            data.unite,
-            data.typeM || data.type_matiere,
-            data.stock_actuel,
-            data.stock_minimum,
-            data.prix_unitaire,
-            id
-        ]);
+    // 🆕 FONCTION UPDATE AVEC HISTORIQUE
+    static async update(id, data, responsable = 'Système') {
+        const client = await pool.connect();
 
-        return result.rows[0];
+        try {
+            await client.query('BEGIN');
+
+            // Récupérer l'ancien état
+            const ancienneMatiere = await client.query(`
+                SELECT * FROM MatierePremiere WHERE id_matiere = $1
+            `, [id]);
+
+            if (ancienneMatiere.rows.length === 0) {
+                throw new Error('Matière première introuvable');
+            }
+
+            const ancien = ancienneMatiere.rows[0];
+            const ancienStock = parseFloat(ancien.stock_actuel);
+            const nouveauStock = parseFloat(data.stock_actuel);
+
+            // Si le stock a changé, enregistrer l'historique
+            if (ancienStock !== nouveauStock) {
+                const quantiteAjustee = nouveauStock - ancienStock;
+
+                await client.query(`
+                    INSERT INTO AjustementStock (
+                        type_article, 
+                        id_article, 
+                        type_ajustement, 
+                        quantite_avant, 
+                        quantite_ajustee, 
+                        quantite_apres, 
+                        responsable, 
+                        motif
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                `, [
+                    'MATIERE',
+                    id,
+                    'MODIFICATION',
+                    ancienStock,
+                    quantiteAjustee,
+                    nouveauStock,
+                    responsable,
+                    data.motif || 'Modification manuelle du stock'
+                ]);
+            }
+
+            // Mettre à jour la matière
+            const result = await client.query(`
+                UPDATE MatierePremiere 
+                SET nom = $1, 
+                    unite = $2, 
+                    typem = $3, 
+                    stock_actuel = $4, 
+                    stock_minimum = $5, 
+                    prix_unitaire = $6
+                WHERE id_matiere = $7
+                RETURNING 
+                    id_matiere,
+                    nom,
+                    unite,
+                    typem AS "typeM",
+                    stock_actuel,
+                    stock_minimum,
+                    prix_unitaire,
+                    date_creation
+            `, [
+                data.nom,
+                data.unite,
+                data.typeM || data.type_matiere,
+                nouveauStock,
+                data.stock_minimum,
+                data.prix_unitaire,
+                id
+            ]);
+
+            await client.query('COMMIT');
+            return result.rows[0];
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
     }
 
     static async delete(id) {
@@ -161,8 +223,8 @@ class MatierePremiere {
             await client.query('BEGIN');
 
             const matiereResult = await client.query(`
-        SELECT * FROM MatierePremiere WHERE id_matiere = $1
-      `, [id]);
+                SELECT * FROM MatierePremiere WHERE id_matiere = $1
+            `, [id]);
             const matiere = matiereResult.rows[0];
 
             if (!matiere) throw new Error('Matière première introuvable');
@@ -175,18 +237,18 @@ class MatierePremiere {
 
             // Enregistrer l'ajustement
             await client.query(`
-        INSERT INTO AjustementStock (
-          type_article, 
-          id_article, 
-          type_ajustement, 
-          quantite_avant, 
-          quantite_ajustee, 
-          quantite_apres, 
-          responsable, 
-          motif
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, [
+                INSERT INTO AjustementStock (
+                    type_article, 
+                    id_article, 
+                    type_ajustement, 
+                    quantite_avant, 
+                    quantite_ajustee, 
+                    quantite_apres, 
+                    responsable, 
+                    motif
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `, [
                 'MATIERE',
                 id,
                 typeAjustement,
@@ -199,11 +261,11 @@ class MatierePremiere {
 
             // Mettre à jour le stock
             const updateResult = await client.query(`
-        UPDATE MatierePremiere 
-        SET stock_actuel = $1 
-        WHERE id_matiere = $2 
-        RETURNING *
-      `, [nouvelleQuantite, id]);
+                UPDATE MatierePremiere 
+                SET stock_actuel = $1 
+                WHERE id_matiere = $2 
+                RETURNING *
+            `, [nouvelleQuantite, id]);
 
             await client.query('COMMIT');
             return updateResult.rows[0];
@@ -219,13 +281,13 @@ class MatierePremiere {
     // Récupérer l'historique des ajustements d'une matière
     static async getHistoriqueAjustements(id) {
         const result = await pool.query(`
-      SELECT * FROM Vue_HistoriqueAjustements
-      WHERE type_article = 'MATIERE' AND id_article = $1
-      ORDER BY date_ajustement DESC
-    `, [id]);
+            SELECT * FROM Vue_HistoriqueAjustements
+            WHERE type_article = 'MATIERE' AND id_article = $1
+            ORDER BY date_ajustement DESC
+        `, [id]);
         return result.rows;
     }
 
-}  // 👈 ACCOLADE FERMANTE MANQUANTE !
+}
 
 module.exports = MatierePremiere;

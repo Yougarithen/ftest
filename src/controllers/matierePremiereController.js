@@ -1,6 +1,6 @@
 // Controller matières premières - PostgreSQL
 const MatierePremiere = require('../models/MatierePremiere');
-const pool = require('../database/connection'); // 👈 AJOUTER CETTE LIGNE
+const pool = require('../database/connection');
 
 exports.getAll = async (req, res) => {
     try {
@@ -50,10 +50,24 @@ exports.create = async (req, res) => {
     }
 };
 
+// 🆕 UPDATE MODIFIÉ POUR INCLURE LE RESPONSABLE
 exports.update = async (req, res) => {
     try {
-        const matiere = await MatierePremiere.update(req.params.id, req.body);
-        res.json({ success: true, data: matiere });
+        // Récupérer l'utilisateur connecté depuis le token JWT
+        const responsable = req.user?.username || req.user?.email || 'Utilisateur inconnu';
+
+        // Passer le responsable au model
+        const matiere = await MatierePremiere.update(
+            req.params.id,
+            req.body,
+            responsable
+        );
+
+        res.json({
+            success: true,
+            data: matiere,
+            message: 'Matière mise à jour avec succès'
+        });
     } catch (error) {
         res.status(400).json({ success: false, error: error.message });
     }
@@ -112,7 +126,6 @@ exports.getHistoriqueAjustements = async (req, res) => {
     }
 };
 
-// 👇 NOUVELLE FONCTION
 exports.getHistoriqueGlobal = async (req, res) => {
     try {
         const result = await pool.query(`
