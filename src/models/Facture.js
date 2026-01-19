@@ -110,23 +110,48 @@ class Facture {
                 const typeFacture = data.type_facture || 'FACTURE';
                 const dateFacture = data.date_facture ? new Date(data.date_facture) : new Date();
 
-                // Déterminer le préfixe selon le type
-                let prefixeType = 'FACT';
+                // Si c'est un BON_LIVRAISON, format AAMMXXXX
                 if (typeFacture === 'BON_LIVRAISON') {
-                    prefixeType = 'BL';
-                } else if (typeFacture === 'AVOIR') {
-                    prefixeType = 'AVOIR';
-                } else if (typeFacture === 'PROFORMA') {
-                    prefixeType = 'PRO';
+                    const annee = dateFacture.getFullYear().toString().slice(-2);
+                    const mois = (dateFacture.getMonth() + 1).toString().padStart(2, '0');
+                    const prefixe = `${annee}${mois}`;
+
+                    // Récupérer le dernier BL (tous confondus, pas seulement du mois)
+                    const lastResult = await client.query(`
+                    SELECT numero_facture 
+                    FROM Facture 
+                    WHERE type_facture = 'BON_LIVRAISON'
+                    AND numero_facture ~ '^[0-9]{8}$'
+                    ORDER BY numero_facture DESC 
+                    LIMIT 1
+                    FOR UPDATE
+                `);
+
+                    let serie = 1;
+                    if (lastResult.rows.length > 0) {
+                        // Extraire les 4 derniers chiffres et incrémenter
+                        const dernierNumero = lastResult.rows[0].numero_facture;
+                        const derniereSerie = parseInt(dernierNumero.slice(-4), 10);
+                        serie = derniereSerie + 1;
+                    }
+
+                    numeroFacture = `${prefixe}${serie.toString().padStart(4, '0')}`;
                 }
+                // Pour les autres types (FACTURE, AVOIR, PROFORMA) - format original
+                else {
+                    let prefixeType = 'FACT';
+                    if (typeFacture === 'AVOIR') {
+                        prefixeType = 'AVOIR';
+                    } else if (typeFacture === 'PROFORMA') {
+                        prefixeType = 'PRO';
+                    }
 
-                const annee = dateFacture.getFullYear().toString().slice(-2);
-                const mois = (dateFacture.getMonth() + 1).toString().padStart(2, '0');
-                const jour = dateFacture.getDate().toString().padStart(2, '0');
-                const prefixe = `${prefixeType}-${annee}${mois}${jour}`;
+                    const annee = dateFacture.getFullYear().toString().slice(-2);
+                    const mois = (dateFacture.getMonth() + 1).toString().padStart(2, '0');
+                    const jour = dateFacture.getDate().toString().padStart(2, '0');
+                    const prefixe = `${prefixeType}-${annee}${mois}${jour}`;
 
-                // Verrouiller la table pour éviter les doublons
-                const lastResult = await client.query(`
+                    const lastResult = await client.query(`
                     SELECT numero_facture 
                     FROM Facture 
                     WHERE numero_facture LIKE $1 
@@ -135,22 +160,23 @@ class Facture {
                     FOR UPDATE
                 `, [`${prefixe}%`]);
 
-                let serie = 1;
-                if (lastResult.rows.length > 0) {
-                    const match = lastResult.rows[0].numero_facture.match(/-(\d+)$/);
-                    if (match) {
-                        serie = parseInt(match[1], 10) + 1;
+                    let serie = 1;
+                    if (lastResult.rows.length > 0) {
+                        const match = lastResult.rows[0].numero_facture.match(/-(\d+)$/);
+                        if (match) {
+                            serie = parseInt(match[1], 10) + 1;
+                        }
                     }
-                }
 
-                numeroFacture = `${prefixe}-${serie.toString().padStart(3, '0')}`;
+                    numeroFacture = `${prefixe}-${serie.toString().padStart(3, '0')}`;
+                }
             }
 
             const result = await client.query(`
-                INSERT INTO Facture (numero_facture, id_client, id_devis, date_facture, date_echeance, statut, type_facture, remise_globale, conditions_paiement, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                RETURNING *
-            `, [
+            INSERT INTO Facture (numero_facture, id_client, id_devis, date_facture, date_echeance, statut, type_facture, remise_globale, conditions_paiement, notes)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING *
+        `, [
                 numeroFacture,
                 data.id_client,
                 data.id_devis || null,
@@ -173,7 +199,6 @@ class Facture {
             client.release();
         }
     }
-
     static async update(id, data) {
         const result = await pool.query(`
       UPDATE Facture 
