@@ -200,18 +200,19 @@ class Facture {
         }
     }
     static async update(id, data) {
+        // ⚠️ IMPORTANT: type_facture ne doit JAMAIS être modifié après création
+        // On l'exclut explicitement de la requête UPDATE
         const result = await pool.query(`
       UPDATE Facture 
       SET id_client = $1, date_facture = $2, date_echeance = $3, statut = $4, 
-          type_facture = $5, remise_globale = $6, conditions_paiement = $7, notes = $8, date_modification = CURRENT_TIMESTAMP
-      WHERE id_facture = $9
+          remise_globale = $5, conditions_paiement = $6, notes = $7, date_modification = CURRENT_TIMESTAMP
+      WHERE id_facture = $8
       RETURNING *
     `, [
             data.id_client,
             data.date_facture,
             data.date_echeance,
             data.statut,
-            data.type_facture,
             data.remise_globale,
             data.conditions_paiement,
             data.notes,
