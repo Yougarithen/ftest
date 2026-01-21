@@ -56,36 +56,36 @@ class Devis {
     }
 
     /**
-     * Générer un numéro de devis unique au format DEV-AAMMJJ-XXX
+     * Générer un numéro de devis unique au format AAXXXX
+     * AA = Année (ex: 26 pour 2026)
+     * XXXX = Numéro de série sur 4 chiffres
      * @param {Date} date - Date du devis
      * @returns {Promise<string>} Numéro de devis généré
      */
     static async genererNumeroDevis(date = new Date()) {
-        // Formater la date: AAMMJJ
+        // Formater l'année: AA (2 derniers chiffres)
         const annee = date.getFullYear().toString().slice(-2);
-        const mois = (date.getMonth() + 1).toString().padStart(2, '0');
-        const jour = date.getDate().toString().padStart(2, '0');
-        const prefixe = `DEV-${annee}${mois}${jour}`;
+        const prefixe = annee;
 
-        // Trouver le dernier numéro du jour avec verrouillage pour éviter les doublons
+        // Trouver le dernier numéro avec verrouillage pour éviter les doublons
         const result = await pool.query(`
             SELECT numero_devis 
             FROM Devis 
-            WHERE numero_devis LIKE $1 
+            WHERE numero_devis ~ '^[0-9]{6}$'
             ORDER BY numero_devis DESC 
             LIMIT 1
             FOR UPDATE
-        `, [`${prefixe}%`]);
+        `);
 
         let serie = 1;
         if (result.rows.length > 0) {
-            const match = result.rows[0].numero_devis.match(/-(\d+)$/);
-            if (match) {
-                serie = parseInt(match[1], 10) + 1;
-            }
+            // Extraire les 4 derniers chiffres et incrémenter
+            const dernierNumero = result.rows[0].numero_devis;
+            const derniereSerie = parseInt(dernierNumero.slice(-4), 10);
+            serie = derniereSerie + 1;
         }
 
-        return `${prefixe}-${serie.toString().padStart(3, '0')}`;
+        return `${prefixe}${serie.toString().padStart(4, '0')}`;
     }
 
     static async create(data) {
@@ -100,29 +100,27 @@ class Devis {
             if (!numeroDevis) {
                 const dateDevis = data.date_devis ? new Date(data.date_devis) : new Date();
                 const annee = dateDevis.getFullYear().toString().slice(-2);
-                const mois = (dateDevis.getMonth() + 1).toString().padStart(2, '0');
-                const jour = dateDevis.getDate().toString().padStart(2, '0');
-                const prefixe = `DEV-${annee}${mois}${jour}`;
+                const prefixe = annee;
 
-                // Verrouiller la table pour éviter les doublons
+                // Récupérer le dernier devis (tous confondus)
                 const lastResult = await client.query(`
                     SELECT numero_devis 
                     FROM Devis 
-                    WHERE numero_devis LIKE $1 
+                    WHERE numero_devis ~ '^[0-9]{6}$'
                     ORDER BY numero_devis DESC 
                     LIMIT 1
                     FOR UPDATE
-                `, [`${prefixe}%`]);
+                `);
 
                 let serie = 1;
                 if (lastResult.rows.length > 0) {
-                    const match = lastResult.rows[0].numero_devis.match(/-(\d+)$/);
-                    if (match) {
-                        serie = parseInt(match[1], 10) + 1;
-                    }
+                    // Extraire les 4 derniers chiffres et incrémenter
+                    const dernierNumero = lastResult.rows[0].numero_devis;
+                    const derniereSerie = parseInt(dernierNumero.slice(-4), 10);
+                    serie = derniereSerie + 1;
                 }
 
-                numeroDevis = `${prefixe}-${serie.toString().padStart(3, '0')}`;
+                numeroDevis = `${prefixe}${serie.toString().padStart(4, '0')}`;
             }
 
             const result = await client.query(`
