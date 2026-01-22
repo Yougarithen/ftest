@@ -72,7 +72,7 @@ class Production {
         return this.getById(result.rows[0].id_production);
     }
 
-    static async produire(id_produit, quantite_produite, operateur, commentaire = null, rebuts = 0) {
+    static async produire(id_produit, quantite_produite, operateur, commentaire = null, rebuts = 0, date_production = null) {
         if (!id_produit || !quantite_produite || !operateur) {
             throw new Error('Données manquantes (id_produit, quantite_produite, operateur requis)');
         }
@@ -105,9 +105,9 @@ class Production {
             const result = await client.query(`
         INSERT INTO Production 
         (id_produit, quantite_produite, rebuts, date_production, operateur, commentaire)
-        VALUES ($1, $2, $3, NOW(), $4, $5)
+        VALUES ($1, $2, $3, COALESCE($4::timestamp, NOW()), $5, $6)
         RETURNING *
-      `, [id_produit, quantite_produite, rebutsValue, operateur, commentaire || null]);
+      `, [id_produit, quantite_produite, rebutsValue, date_production, operateur, commentaire || null]);
 
             await client.query('COMMIT');
             return this.getById(result.rows[0].id_production);
