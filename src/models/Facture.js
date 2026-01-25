@@ -1,4 +1,4 @@
-const factures = fact// Model pour les factures - PostgreSQL VERSION avec prix_ttc et auteur
+// Model pour les factures - PostgreSQL VERSION avec prix_ttc et auteur
 const pool = require('../database/connection');
 const BonLivraisonFacture = require('./BonLivraisonFacture');
 
@@ -25,7 +25,7 @@ class Facture {
       FROM Facture f
       LEFT JOIN Client c ON f.id_client = c.id_client
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
-      GROUP BY f.id_facture, c.nom, f.type_facture, f.conditions_paiement, f.notes
+      GROUP BY f.id_facture, c.nom, f.type_facture, f.conditions_paiement, f.notes, f.auteur
       ORDER BY f.date_facture DESC
     `);
 
@@ -71,7 +71,7 @@ class Facture {
       LEFT JOIN Client c ON f.id_client = c.id_client
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
       WHERE f.id_facture = $1
-      GROUP BY f.id_facture, c.nom, f.type_facture
+      GROUP BY f.id_facture, c.nom, f.type_facture, f.auteur
     `, [id]);
 
         const facture = factureResult.rows[0];
@@ -118,7 +118,6 @@ class Facture {
                     const mois = (dateFacture.getMonth() + 1).toString().padStart(2, '0');
                     const prefixe = `${annee}${mois}`;
 
-                    // Récupérer le dernier BL (tous confondus, pas seulement du mois)
                     const lastResult = await client.query(`
                     SELECT numero_facture 
                     FROM Facture 
@@ -131,7 +130,6 @@ class Facture {
 
                     let serie = 1;
                     if (lastResult.rows.length > 0) {
-                        // Extraire les 4 derniers chiffres et incrémenter
                         const dernierNumero = lastResult.rows[0].numero_facture;
                         const derniereSerie = parseInt(dernierNumero.slice(-4), 10);
                         serie = derniereSerie + 1;
@@ -144,7 +142,6 @@ class Facture {
                     const annee = dateFacture.getFullYear().toString().slice(-2);
                     const prefixe = `BC${annee}`;
 
-                    // Récupérer le dernier BC de l'année
                     const lastResult = await client.query(`
                     SELECT numero_facture 
                     FROM Facture 
@@ -157,7 +154,6 @@ class Facture {
 
                     let serie = 1;
                     if (lastResult.rows.length > 0) {
-                        // Extraire les 4 derniers chiffres et incrémenter
                         const dernierNumero = lastResult.rows[0].numero_facture;
                         const derniereSerie = parseInt(dernierNumero.slice(-4), 10);
                         serie = derniereSerie + 1;
@@ -215,7 +211,7 @@ class Facture {
                 data.remise_globale || 0,
                 data.conditions_paiement || null,
                 data.notes || null,
-                data.auteur
+                data.auteur || null
             ]);
 
             await client.query('COMMIT');
@@ -427,7 +423,7 @@ class Facture {
                 data.remise_globale || 0,
                 data.conditions_paiement || null,
                 data.notes || null,
-                data.auteur
+                data.auteur || null
             ]);
 
             const id_facture = factureResult.rows[0].id_facture;
