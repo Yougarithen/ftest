@@ -1,4 +1,4 @@
-// Model pour les factures - PostgreSQL VERSION avec prix_ttc
+// Model pour les factures - PostgreSQL VERSION avec prix_ttc et auteur
 const pool = require('../database/connection');
 const BonLivraisonFacture = require('./BonLivraisonFacture');
 
@@ -18,13 +18,17 @@ class Facture {
         f.remise_globale,
         f.conditions_paiement,
         f.notes,
+        f.id_auteur,
+        u.nom as auteur_nom,
+        u.prenom as auteur_prenom,
         COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)), 0) as montant_ttc,
         COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100)), 0) as montant_ht,
         COALESCE(SUM((lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)) - (lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100))), 0) as montant_tva
       FROM Facture f
       LEFT JOIN Client c ON f.id_client = c.id_client
+      LEFT JOIN Utilisateur u ON f.id_auteur = u.id_utilisateur
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
-      GROUP BY f.id_facture, c.nom, f.type_facture, f.conditions_paiement, f.notes
+      GROUP BY f.id_facture, c.nom, f.type_facture, f.conditions_paiement, f.notes, u.nom, u.prenom
       ORDER BY f.date_facture DESC
     `);
 
@@ -62,14 +66,18 @@ class Facture {
         f.remise_globale,
         f.conditions_paiement,
         f.notes,
+        f.id_auteur,
+        u.nom as auteur_nom,
+        u.prenom as auteur_prenom,
         COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)), 0) as montant_ttc,
         COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100)), 0) as montant_ht,
         COALESCE(SUM((lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)) - (lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100))), 0) as montant_tva
       FROM Facture f
       LEFT JOIN Client c ON f.id_client = c.id_client
+      LEFT JOIN Utilisateur u ON f.id_auteur = u.id_utilisateur
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
       WHERE f.id_facture = $1
-      GROUP BY f.id_facture, c.nom, f.type_facture
+      GROUP BY f.id_facture, c.nom, f.type_facture, u.nom, u.prenom
     `, [id]);
 
         const facture = factureResult.rows[0];
@@ -199,8 +207,8 @@ class Facture {
             }
 
             const result = await client.query(`
-            INSERT INTO Facture (numero_facture, id_client, id_devis, date_facture, date_echeance, statut, type_facture, remise_globale, conditions_paiement, notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO Facture (numero_facture, id_client, id_devis, date_facture, date_echeance, statut, type_facture, remise_globale, conditions_paiement, notes, id_auteur)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
         `, [
                 numeroFacture,
@@ -212,7 +220,8 @@ class Facture {
                 data.type_facture || 'FACTURE',
                 data.remise_globale || 0,
                 data.conditions_paiement || null,
-                data.notes || null
+                data.notes || null,
+                data.id_auteur
             ]);
 
             await client.query('COMMIT');
@@ -225,6 +234,7 @@ class Facture {
             client.release();
         }
     }
+
     static async update(id, data) {
         // ⚠️ IMPORTANT: type_facture ne doit JAMAIS être modifié après création
         // On l'exclut explicitement de la requête UPDATE
@@ -264,7 +274,7 @@ class Facture {
             data.quantite,
             data.unite_vente,
             data.prix_unitaire_ht,
-            data.prix_ttc,  // Nouvelle colonne
+            data.prix_ttc,
             data.taux_tva,
             data.remise_ligne || 0,
             data.description || null
@@ -409,9 +419,9 @@ class Facture {
             const factureResult = await client.query(`
             INSERT INTO facture (
                 numero_facture, id_client, date_facture, date_echeance, 
-                statut, type_facture, remise_globale, conditions_paiement, notes
+                statut, type_facture, remise_globale, conditions_paiement, notes, id_auteur
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING *
         `, [
                 numeroFacture,
@@ -422,7 +432,8 @@ class Facture {
                 'FACTURE',
                 data.remise_globale || 0,
                 data.conditions_paiement || null,
-                data.notes || null
+                data.notes || null,
+                data.id_auteur
             ]);
 
             const id_facture = factureResult.rows[0].id_facture;
