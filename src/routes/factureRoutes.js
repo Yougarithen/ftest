@@ -1,4 +1,3 @@
-
 // ========== factureRoutes.js - SÉCURISÉ ==========
 const express = require('express');
 const router = express.Router();
@@ -26,8 +25,17 @@ router.get('/:id/bons-livraison',
 router.get('/:id', requirePermission('factures.read'), controller.getById);
 router.post('/', requirePermission('factures.create'), controller.create);
 router.put('/:id', requirePermission('factures.update'), controller.update);
+
+// ⭐ NOUVELLE ROUTE - Changer le statut d'une facture/bon de commande
+router.put('/:id/statut', requirePermission('factures.update'), controller.changerStatut);
+
 router.delete('/:id', requirePermission('factures.delete'), controller.delete);
 router.post('/:id/lignes', requirePermission('factures.update'), controller.ajouterLigne);
+
+// Routes pour gérer les lignes individuelles
+router.put('/:id/lignes/:id_ligne', requirePermission('factures.update'), controller.updateLigne);
+router.delete('/:id/lignes/:id_ligne', requirePermission('factures.update'), controller.deleteLigne);
+
 router.post('/:id/valider', requirePermission('factures.validate'), controller.valider);
 
 module.exports = router;
