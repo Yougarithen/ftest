@@ -71,16 +71,16 @@ class LigneFacture {
     }
 
     static async update(id, data) {
+        // unite_vente n'est PAS modifié, on le retire de l'UPDATE
         const result = await pool.query(`
       UPDATE LigneFacture 
-      SET id_produit = $1, quantite = $2, unite_vente = $3, prix_unitaire_ht = $4, 
-          prix_ttc = $5, taux_tva = $6, remise_ligne = $7, description = $8
-      WHERE id_ligne = $9
+      SET id_produit = $1, quantite = $2, prix_unitaire_ht = $3, 
+          prix_ttc = $4, taux_tva = $5, remise_ligne = $6, description = $7
+      WHERE id_ligne = $8
       RETURNING *
     `, [
             data.id_produit,
             data.quantite,
-            data.unite_vente,
             data.prix_unitaire_ht,
             data.prix_ttc, // Nouvelle colonne
             data.taux_tva,

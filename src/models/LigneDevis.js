@@ -80,16 +80,16 @@ class LigneDevis {
         // Calculer prix_ttc si non fourni (pour compatibilité)
         const prixTTC = data.prix_ttc || (data.prix_unitaire_ht * (1 + (data.taux_tva || 0) / 100));
 
+        // unite_vente n'est PAS modifié, on le retire de l'UPDATE
         const result = await pool.query(`
       UPDATE LigneDevis 
-      SET id_produit = $1, quantite = $2, unite_vente = $3, prix_unitaire_ht = $4, 
-          prix_ttc = $5, taux_tva = $6, remise_ligne = $7, description = $8
-      WHERE id_ligne = $9
+      SET id_produit = $1, quantite = $2, prix_unitaire_ht = $3, 
+          prix_ttc = $4, taux_tva = $5, remise_ligne = $6, description = $7
+      WHERE id_ligne = $8
       RETURNING *
     `, [
             data.id_produit,
             data.quantite,
-            data.unite_vente,
             data.prix_unitaire_ht,
             prixTTC,
             data.taux_tva,
