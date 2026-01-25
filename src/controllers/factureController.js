@@ -24,10 +24,10 @@ exports.getById = async (req, res) => {
 
 exports.create = async (req, res) => {
     try {
-        // Ajouter l'ID de l'utilisateur connecté aux données
+        // Ajouter le nom d'utilisateur connecté aux données
         const factureData = {
             ...req.body,
-            id_auteur: req.user.id_utilisateur  // req.user vient du middleware authenticate
+            auteur: req.user.nom_utilisateur  // req.user vient du middleware authenticate
         };
 
         const facture = await Facture.create(factureData);
@@ -95,10 +95,10 @@ exports.getBonsLivraisonNonFactures = async (req, res) => {
 
 exports.creerFactureDepuisBons = async (req, res) => {
     try {
-        // Ajouter l'ID de l'utilisateur connecté aux données
+        // Ajouter le nom d'utilisateur connecté aux données
         const factureData = {
             ...req.body,
-            id_auteur: req.user.id_utilisateur
+            auteur: req.user.nom_utilisateur
         };
 
         const facture = await Facture.creerFactureDepuisBons(factureData);
