@@ -137,6 +137,32 @@ class Facture {
 
                     numeroFacture = `${prefixe}${serie.toString().padStart(4, '0')}`;
                 }
+                // Si c'est un BON_COMMANDE, format BCAAXXXX
+                else if (typeFacture === 'BON_COMMANDE') {
+                    const annee = dateFacture.getFullYear().toString().slice(-2);
+                    const prefixe = `BC${annee}`;
+
+                    // Récupérer le dernier BC de l'année
+                    const lastResult = await client.query(`
+                    SELECT numero_facture 
+                    FROM Facture 
+                    WHERE type_facture = 'BON_COMMANDE'
+                    AND numero_facture LIKE $1
+                    ORDER BY numero_facture DESC 
+                    LIMIT 1
+                    FOR UPDATE
+                `, [`${prefixe}%`]);
+
+                    let serie = 1;
+                    if (lastResult.rows.length > 0) {
+                        // Extraire les 4 derniers chiffres et incrémenter
+                        const dernierNumero = lastResult.rows[0].numero_facture;
+                        const derniereSerie = parseInt(dernierNumero.slice(-4), 10);
+                        serie = derniereSerie + 1;
+                    }
+
+                    numeroFacture = `${prefixe}${serie.toString().padStart(4, '0')}`;
+                }
                 // Pour les autres types (FACTURE, AVOIR, PROFORMA) - format original
                 else {
                     let prefixeType = 'FACT';
