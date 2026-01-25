@@ -1,6 +1,6 @@
 // Controller pour les factures - PostgreSQL avec auteur
 const Facture = require('../models/Facture');
-
+const pool = require('../database/connection');
 exports.getAll = async (req, res) => {
     try {
         const factures = await Facture.getAll();
