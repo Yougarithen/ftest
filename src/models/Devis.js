@@ -9,7 +9,8 @@ class Devis {
       SELECT 
         v.*,
         d.notes,
-        d.id_client as devis_id_client
+        d.id_client as devis_id_client,
+        d.auteur
       FROM Vue_DevisTotaux v
       INNER JOIN Devis d ON v.id_devis = d.id_devis
       ORDER BY v.date_devis DESC
@@ -28,12 +29,13 @@ class Devis {
 
     // VERSION OPTIMISÉE : Récupère tout en une seule requête
     static async getById(id) {
-        // Récupérer les données de la vue + notes + id_client en un seul JOIN
+        // Récupérer les données de la vue + notes + id_client + auteur en un seul JOIN
         const devisResult = await pool.query(`
       SELECT 
         v.*,
         d.notes,
-        d.id_client as devis_id_client
+        d.id_client as devis_id_client,
+        d.auteur
       FROM Vue_DevisTotaux v
       INNER JOIN Devis d ON v.id_devis = d.id_devis
       WHERE v.id_devis = $1
@@ -124,8 +126,8 @@ class Devis {
             }
 
             const result = await client.query(`
-                INSERT INTO Devis (numero_devis, id_client, date_devis, date_validite, statut, remise_globale, conditions_paiement, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                INSERT INTO Devis (numero_devis, id_client, date_devis, date_validite, statut, remise_globale, conditions_paiement, notes, auteur)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 RETURNING *
             `, [
                 numeroDevis,
@@ -135,7 +137,8 @@ class Devis {
                 data.statut || 'Brouillon',
                 data.remise_globale || 0,
                 data.conditions_paiement || null,
-                data.notes || null
+                data.notes || null,
+                data.auteur || null
             ]);
 
             await client.query('COMMIT');
@@ -167,9 +170,10 @@ class Devis {
           statut = $4, 
           remise_globale = $5, 
           conditions_paiement = $6, 
-          notes = $7, 
+          notes = $7,
+          auteur = $8, 
           date_modification = CURRENT_TIMESTAMP
-      WHERE id_devis = $8
+      WHERE id_devis = $9
       RETURNING *
     `, [
             data.id_client ?? current.id_client,
@@ -179,6 +183,7 @@ class Devis {
             data.remise_globale ?? current.remise_globale,
             data.conditions_paiement ?? current.conditions_paiement,
             data.notes ?? current.notes,
+            data.auteur ?? current.auteur,
             id
         ]);
 
