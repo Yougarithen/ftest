@@ -141,8 +141,33 @@ class Devis {
                 data.auteur || null
             ]);
 
+            const devisId = result.rows[0].id_devis;
+
+            // 🆕 CRÉER LES LIGNES DU DEVIS si elles sont fournies
+            if (data.lignes && Array.isArray(data.lignes) && data.lignes.length > 0) {
+                for (const ligne of data.lignes) {
+                    // Calculer prix_ttc depuis prix_unitaire_ttc ou prix_ttc (compatibilité)
+                    const prixTTC = ligne.prix_unitaire_ttc || ligne.prix_ttc || (ligne.prix_unitaire_ht * (1 + (ligne.taux_tva || 0) / 100));
+
+                    await client.query(`
+                        INSERT INTO LigneDevis (id_devis, id_produit, quantite, unite_vente, prix_unitaire_ht, prix_ttc, taux_tva, remise_ligne, description)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    `, [
+                        devisId,
+                        ligne.id_produit,
+                        ligne.quantite,
+                        ligne.unite_vente || null,
+                        ligne.prix_unitaire_ht,
+                        prixTTC,
+                        ligne.taux_tva || 0,
+                        ligne.remise_ligne || 0,
+                        ligne.description || null
+                    ]);
+                }
+            }
+
             await client.query('COMMIT');
-            return this.getById(result.rows[0].id_devis);
+            return this.getById(devisId);
 
         } catch (error) {
             await client.query('ROLLBACK');
