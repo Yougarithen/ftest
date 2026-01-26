@@ -1,4 +1,4 @@
-// models/Production.js - PostgreSQL avec gestion des rebuts
+// models/Production.js - PostgreSQL avec réutilisation des IDs
 const pool = require('../database/connection');
 
 class Production {
@@ -46,6 +46,15 @@ class Production {
         return result.rows;
     }
 
+    // ✅ Fonction pour obtenir le prochain ID disponible
+    static async getNextId() {
+        const result = await pool.query(`
+      SELECT COALESCE(MAX(id_production), 0) + 1 as next_id
+      FROM Production
+    `);
+        return result.rows[0].next_id;
+    }
+
     static async create(data) {
         const { id_produit, quantite_produite, rebuts, operateur, commentaire } = data;
 
@@ -62,12 +71,15 @@ class Production {
             throw new Error('Les rebuts ne peuvent pas dépasser la quantité produite');
         }
 
+        // ✅ Récupérer le prochain ID
+        const nextId = await this.getNextId();
+
         const result = await pool.query(`
       INSERT INTO Production 
-      (id_produit, quantite_produite, rebuts, date_production, operateur, commentaire)
-      VALUES ($1, $2, $3, NOW(), $4, $5)
+      (id_production, id_produit, quantite_produite, rebuts, date_production, operateur, commentaire)
+      VALUES ($1, $2, $3, $4, NOW(), $5, $6)
       RETURNING *
-    `, [id_produit, quantite_produite, rebutsValue, operateur, commentaire || null]);
+    `, [nextId, id_produit, quantite_produite, rebutsValue, operateur, commentaire || null]);
 
         return this.getById(result.rows[0].id_production);
     }
@@ -101,13 +113,20 @@ class Production {
                 throw new Error('Produit non trouvé');
             }
 
-            // ✅ Insérer dans Production (les triggers font le reste)
+            // ✅ Récupérer le prochain ID disponible
+            const nextIdResult = await client.query(`
+        SELECT COALESCE(MAX(id_production), 0) + 1 as next_id
+        FROM Production
+      `);
+            const nextId = nextIdResult.rows[0].next_id;
+
+            // ✅ Insérer dans Production avec l'ID calculé
             const result = await client.query(`
         INSERT INTO Production 
-        (id_produit, quantite_produite, rebuts, date_production, operateur, commentaire)
-        VALUES ($1, $2, $3, COALESCE($4::timestamp, NOW()), $5, $6)
+        (id_production, id_produit, quantite_produite, rebuts, date_production, operateur, commentaire)
+        VALUES ($1, $2, $3, $4, COALESCE($5::timestamp, NOW()), $6, $7)
         RETURNING *
-      `, [id_produit, quantite_produite, rebutsValue, date_production, operateur, commentaire || null]);
+      `, [nextId, id_produit, quantite_produite, rebutsValue, date_production, operateur, commentaire || null]);
 
             await client.query('COMMIT');
             return this.getById(result.rows[0].id_production);
