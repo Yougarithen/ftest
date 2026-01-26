@@ -1,4 +1,4 @@
-// Model pour les factures - PostgreSQL VERSION avec prix_ttc et auteur
+// Model pour les factures - PostgreSQL VERSION avec prix_ttc, auteur et ref_bl
 const pool = require('../database/connection');
 const BonLivraisonFacture = require('./BonLivraisonFacture');
 
@@ -19,13 +19,14 @@ class Facture {
         f.conditions_paiement,
         f.notes,
         f.auteur,
+        f.ref_bl,
         COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)), 0) as montant_ttc,
         COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100)), 0) as montant_ht,
         COALESCE(SUM((lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)) - (lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100))), 0) as montant_tva
       FROM Facture f
       LEFT JOIN Client c ON f.id_client = c.id_client
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
-      GROUP BY f.id_facture, c.nom, f.type_facture, f.conditions_paiement, f.notes, f.auteur
+      GROUP BY f.id_facture, c.nom, f.type_facture, f.conditions_paiement, f.notes, f.auteur, f.ref_bl
       ORDER BY f.date_facture DESC
     `);
 
@@ -64,6 +65,7 @@ class Facture {
         f.conditions_paiement,
         f.notes,
         f.auteur,
+        f.ref_bl,
         COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)), 0) as montant_ttc,
         COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100)), 0) as montant_ht,
         COALESCE(SUM((lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)) - (lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100))), 0) as montant_tva
@@ -71,7 +73,7 @@ class Facture {
       LEFT JOIN Client c ON f.id_client = c.id_client
       LEFT JOIN LigneFacture lf ON f.id_facture = lf.id_facture
       WHERE f.id_facture = $1
-      GROUP BY f.id_facture, c.nom, f.type_facture, f.auteur
+      GROUP BY f.id_facture, c.nom, f.type_facture, f.auteur, f.ref_bl
     `, [id]);
 
         const facture = factureResult.rows[0];
@@ -197,8 +199,8 @@ class Facture {
             }
 
             const result = await client.query(`
-            INSERT INTO Facture (numero_facture, id_client, id_devis, date_facture, date_echeance, statut, type_facture, remise_globale, conditions_paiement, notes, auteur)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            INSERT INTO Facture (numero_facture, id_client, id_devis, date_facture, date_echeance, statut, type_facture, remise_globale, conditions_paiement, notes, auteur, ref_bl)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING *
         `, [
                 numeroFacture,
@@ -211,7 +213,8 @@ class Facture {
                 data.remise_globale || 0,
                 data.conditions_paiement || null,
                 data.notes || null,
-                data.auteur || null
+                data.auteur || null,
+                data.ref_bl || null
             ]);
 
             await client.query('COMMIT');
@@ -231,8 +234,8 @@ class Facture {
         const result = await pool.query(`
       UPDATE Facture 
       SET id_client = $1, date_facture = $2, date_echeance = $3, statut = $4, 
-          remise_globale = $5, conditions_paiement = $6, notes = $7, date_modification = CURRENT_TIMESTAMP
-      WHERE id_facture = $8
+          remise_globale = $5, conditions_paiement = $6, notes = $7, ref_bl = $8, date_modification = CURRENT_TIMESTAMP
+      WHERE id_facture = $9
       RETURNING *
     `, [
             data.id_client,
@@ -242,6 +245,7 @@ class Facture {
             data.remise_globale,
             data.conditions_paiement,
             data.notes,
+            data.ref_bl || null,
             id
         ]);
 
@@ -353,6 +357,7 @@ class Facture {
                 f.date_facture,
                 f.statut,
                 f.notes,
+                f.ref_bl,
                 COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)), 0) as montant_ttc,
                 COALESCE(SUM(lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100)), 0) as montant_ht,
                 COALESCE(SUM((lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100)) - (lf.quantite * lf.prix_ttc * (1 - lf.remise_ligne / 100) / (1 + lf.taux_tva / 100))), 0) as montant_tva,
@@ -409,9 +414,9 @@ class Facture {
             const factureResult = await client.query(`
             INSERT INTO facture (
                 numero_facture, id_client, date_facture, date_echeance, 
-                statut, type_facture, remise_globale, conditions_paiement, notes, auteur
+                statut, type_facture, remise_globale, conditions_paiement, notes, auteur, ref_bl
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
         `, [
                 numeroFacture,
@@ -423,7 +428,8 @@ class Facture {
                 data.remise_globale || 0,
                 data.conditions_paiement || null,
                 data.notes || null,
-                data.auteur || null
+                data.auteur || null,
+                data.ref_bl || null
             ]);
 
             const id_facture = factureResult.rows[0].id_facture;
