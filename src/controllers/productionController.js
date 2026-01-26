@@ -50,7 +50,7 @@ exports.create = async (req, res) => {
 
 exports.produire = async (req, res) => {
     try {
-        const { id_produit, quantite_produite, operateur, commentaire, rebuts } = req.body;
+        const { id_produit, quantite_produite, operateur, commentaire, rebuts, date_production } = req.body;
 
         if (!id_produit || !quantite_produite || !operateur) {
             return res.status(400).json({
@@ -81,12 +81,14 @@ exports.produire = async (req, res) => {
             });
         }
 
+        // ✅ Passer date_production au modèle
         const production = await Production.produire(
             id_produit,
             quantite_produite,
             operateur,
             commentaire,
-            rebutsValue
+            rebutsValue,
+            date_production  // ← Ajouté ici
         );
 
         const quantite_nette = quantite_produite - rebutsValue;
