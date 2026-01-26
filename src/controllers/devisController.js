@@ -56,7 +56,7 @@ exports.create = async (req, res) => {
 
         const devisData = {
             ...req.body,
-            auteur: auteur
+            auteur: req.user.nom_utilisateur
         };
 
         const devis = await Devis.create(devisData);
