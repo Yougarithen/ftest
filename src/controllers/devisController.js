@@ -40,9 +40,23 @@ exports.getById = async (req, res) => {
 exports.create = async (req, res) => {
     try {
         // Ajouter automatiquement le nom de l'utilisateur connecté comme auteur
+        let auteur = req.body.auteur;
+
+        // Si l'auteur n'est pas fourni dans le body, utiliser les infos du JWT
+        if (!auteur && req.user) {
+            // Construire le nom complet à partir des données disponibles dans le token JWT
+            if (req.user.nom && req.user.prenom) {
+                auteur = `${req.user.prenom} ${req.user.nom}`;
+            } else if (req.user.username) {
+                auteur = req.user.username;
+            } else if (req.user.email) {
+                auteur = req.user.email;
+            }
+        }
+
         const devisData = {
             ...req.body,
-            auteur: req.user ? `${req.user.prenom} ${req.user.nom}` : req.body.auteur
+            auteur: auteur
         };
 
         const devis = await Devis.create(devisData);
