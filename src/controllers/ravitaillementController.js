@@ -98,7 +98,7 @@ exports.delete = async (req, res) => {
         const result = await Ravitaillement.delete(req.params.id);
         res.json({
             success: true,
-            message: 'Ravitaillement supprimé et stock ajusté',
+            message: 'Ravitaillement supprimé avec succès',
             data: result
         });
     } catch (error) {

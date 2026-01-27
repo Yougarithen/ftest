@@ -158,30 +158,7 @@ class Ravitaillement {
 
             const ravitaillement = ravitaillementResult.rows[0];
 
-            // Récupérer le stock actuel de la matière
-            const matiereResult = await client.query(
-                'SELECT stock_actuel FROM MatierePremiere WHERE id_matiere = $1',
-                [ravitaillement.id_matiere]
-            );
-
-            if (matiereResult.rows.length === 0) {
-                throw new Error('Matière première introuvable');
-            }
-
-            const stockActuel = parseFloat(matiereResult.rows[0].stock_actuel);
-            const nouveauStock = stockActuel - parseFloat(ravitaillement.quantite);
-
-            if (nouveauStock < 0) {
-                throw new Error('Impossible de supprimer ce ravitaillement : le stock deviendrait négatif');
-            }
-
-            // Mettre à jour le stock
-            await client.query(
-                'UPDATE MatierePremiere SET stock_actuel = $1 WHERE id_matiere = $2',
-                [nouveauStock, ravitaillement.id_matiere]
-            );
-
-            // Supprimer le ravitaillement
+            // Supprimer le ravitaillement (sans modifier le stock)
             await client.query('DELETE FROM Ravitaillement WHERE id_ravitaillement = $1', [id]);
 
             await client.query('COMMIT');
