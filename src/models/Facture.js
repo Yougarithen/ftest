@@ -217,8 +217,38 @@ class Facture {
                 data.ref_bl || null
             ]);
 
+            // 🔧 CRÉATION DES LIGNES (ajouté pour corriger le bug)
+            const id_facture = result.rows[0].id_facture;
+
+            if (data.lignes && Array.isArray(data.lignes) && data.lignes.length > 0) {
+                for (const ligne of data.lignes) {
+                    // Utiliser prix_ttc comme valeur de référence (ou prix_unitaire_ttc selon le champ)
+                    const prixTTC = ligne.prix_unitaire_ttc || ligne.prix_ttc || 0;
+                    const prixHT = ligne.prix_unitaire_ht || 0;
+                    const tauxTVA = ligne.taux_tva || 19;
+
+                    await client.query(`
+                        INSERT INTO LigneFacture (
+                            id_facture, id_produit, quantite, unite_vente,
+                            prix_unitaire_ht, prix_ttc, taux_tva, remise_ligne, description
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    `, [
+                        id_facture,
+                        ligne.id_produit,
+                        ligne.quantite || 0,
+                        ligne.unite_vente || 'unité',
+                        prixHT,
+                        prixTTC,
+                        tauxTVA,
+                        ligne.remise_ligne || 0,
+                        ligne.description || null
+                    ]);
+                }
+            }
+
             await client.query('COMMIT');
-            return this.getById(result.rows[0].id_facture);
+            return this.getById(id_facture);
 
         } catch (error) {
             await client.query('ROLLBACK');
