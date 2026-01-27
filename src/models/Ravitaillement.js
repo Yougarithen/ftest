@@ -55,29 +55,18 @@ class Ravitaillement {
 
             const matiere = matiereResult.rows[0];
 
-            // Insérer le ravitaillement
-            const ravitaillementResult = await client.query(`
-        INSERT INTO Ravitaillement (
-          id_matiere, 
-          quantite, 
-          prix_achat, 
-          fournisseur, 
-          numero_bon_livraison,
-          commentaire, 
-          responsable
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING 
-          id_ravitaillement,
-          id_matiere,
-          quantite,
-          prix_achat,
-          fournisseur,
-          numero_bon_livraison,
-          commentaire,
-          responsable,
-          date_ravitaillement
-      `, [
+            // Préparer les champs et valeurs pour l'insertion
+            const fields = [
+                'id_matiere',
+                'quantite',
+                'prix_achat',
+                'fournisseur',
+                'numero_bon_livraison',
+                'commentaire',
+                'responsable'
+            ];
+
+            const values = [
                 data.id_matiere,
                 data.quantite,
                 data.prix_achat || null,
@@ -85,7 +74,24 @@ class Ravitaillement {
                 data.numero_bon_livraison || null,
                 data.commentaire || null,
                 data.responsable
-            ]);
+            ];
+
+            // Si une date est fournie, l'ajouter aux champs
+            if (data.date_ravitaillement) {
+                fields.push('date_ravitaillement');
+                values.push(data.date_ravitaillement);
+            }
+
+            // Construire la requête dynamiquement
+            const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+            const returningFields = fields.concat(['id_ravitaillement', 'date_ravitaillement']).join(', ');
+
+            // Insérer le ravitaillement
+            const ravitaillementResult = await client.query(`
+        INSERT INTO Ravitaillement (${fields.join(', ')})
+        VALUES (${placeholders})
+        RETURNING ${returningFields}
+      `, values);
 
             const ravitaillement = ravitaillementResult.rows[0];
 
