@@ -1,4 +1,3 @@
-
 // ========== clientRoutes.js - SÉCURISÉ ==========
 const express = require('express');
 const router = express.Router();
@@ -9,6 +8,8 @@ router.use(authenticate);
 
 // IMPORTANT: Les routes spécifiques doivent être avant les routes avec paramètres
 router.get('/types', requirePermission('clients.read'), controller.getTypes);
+router.get('/statuts', requirePermission('clients.read'), controller.getStatuts);
+router.get('/statut/:statut', requirePermission('clients.read'), controller.getByStatut);
 router.get('/', requirePermission('clients.read'), controller.getAll);
 router.get('/:id', requirePermission('clients.read'), controller.getById);
 router.post('/', requirePermission('clients.create'), controller.create);
