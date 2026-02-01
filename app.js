@@ -59,6 +59,8 @@ app.use((req, res, next) => {
   next();
 });
 
+
+
 // Routes principales
 const routes = require('./src/routes/index');
 app.use('/api', routes);

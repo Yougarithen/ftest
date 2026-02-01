@@ -20,6 +20,8 @@ const inventaireMatiereRoutes = require('./inventaireMatiereRoutes');
 const inventaireProduitRoutes = require('./inventaireProduitRoutes');
 const ravitaillementRoutes = require('./ravitaillementRoutes');
 
+const regionRoutes = require('./regionRoutes');
+
 // Importer les routes d'authentification et de sécurité
 const authRoutes = require('./authRoutes');
 const userRoutes = require('./userRoutes');
@@ -59,6 +61,8 @@ router.use('/factures', factureRoutes);
 
 // Paiements (audit logging critique)
 router.use('/paiements', paiementRoutes);
+
+router.use('/regions', regionRoutes);
 
 // Production
 router.use('/production', productionRoutes);
