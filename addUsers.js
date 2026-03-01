@@ -20,7 +20,7 @@ async function addUsers() {
             nom_utilisateur: 'KATAB Mohamed Lamine',
             email: 'klinkol.KATAB Mohamed Lamine@gmail.com',
             mot_de_passe: 'KML@mine',
-            nom_complet: 'KATAB Mohamed Lamine',
+            nom_complet: 'KATAB Mohamed Lamine', 
             id_role: 1 // 
         });
         console.log('✅ Wail créé avec succès');

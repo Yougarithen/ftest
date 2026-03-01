@@ -1,4 +1,3 @@
-
 // ========== paiementRoutes.js - SÉCURISÉ ==========
 const express = require('express');
 const router = express.Router();
@@ -8,8 +7,9 @@ const { authenticate, requirePermission } = require('../middleware/authMiddlewar
 router.use(authenticate);
 
 router.get('/', requirePermission('paiements.read'), controller.getAll);
-router.get('/:id', requirePermission('paiements.read'), controller.getById);
 router.get('/facture/:id_facture', requirePermission('paiements.read'), controller.getByFacture);
+router.get('/client/:id_client', requirePermission('paiements.read'), controller.getByClient);
+router.get('/:id', requirePermission('paiements.read'), controller.getById);
 router.post('/', requirePermission('paiements.create'), controller.create);
 router.delete('/:id', requirePermission('paiements.delete'), controller.delete);
 
