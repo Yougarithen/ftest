@@ -26,11 +26,12 @@ class Paiement {
 
     static async create(data) {
         const result = await pool.query(`
-      INSERT INTO Paiement (id_facture, montant_paye, date_paiement, mode_paiement, reference, responsable, commentaire)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO Paiement (id_facture, id_client, montant_paye, date_paiement, mode_paiement, reference, responsable, commentaire)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `, [
-            data.id_facture,
+            data.id_facture || null,
+            data.id_client || null,
             data.montant_paye,
             data.date_paiement || new Date().toISOString(),
             data.mode_paiement || null,
@@ -40,6 +41,18 @@ class Paiement {
         ]);
 
         return result.rows[0];
+    }
+
+    static async getByClient(id_client) {
+        const result = await pool.query(`
+      SELECT p.*, f.numero_facture, c.nom as client
+      FROM Paiement p
+      LEFT JOIN Facture f ON p.id_facture = f.id_facture
+      LEFT JOIN Client c ON (p.id_client = c.id_client OR f.id_client = c.id_client)
+      WHERE p.id_client = $1 OR f.id_client = $1
+      ORDER BY p.date_paiement DESC
+    `, [id_client]);
+        return result.rows;
     }
 
     static async delete(id) {
